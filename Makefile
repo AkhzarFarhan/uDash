@@ -8,7 +8,7 @@ BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 .PHONY: push
 push:
 	@if [ "$(BRANCH)" != "main" ]; then \
-		echo "ERROR: You must be on the 'main' branch (current: $(BRANCH))"; \
+		# echo "ERROR: You must be on the 'main' branch (current: $(BRANCH))"; \
 		exit 1; \
 	fi
 	@read -p "Commit message: " msg; \
