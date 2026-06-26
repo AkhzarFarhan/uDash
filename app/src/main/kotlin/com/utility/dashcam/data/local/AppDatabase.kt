@@ -11,7 +11,8 @@ import androidx.room.RoomDatabase
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
-    abstract fun dashcamDao(): DashcamDao
+    abstract fun rawClipDao(): RawClipDao
+    abstract fun dailyMergeDao(): DailyMergeDao
 
     companion object {
         @Volatile
