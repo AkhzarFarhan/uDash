@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">uDash</string>
+    <string name="ingestion_service_channel_id">dashcam_ingestion_channel</string>
+    <string name="ingestion_service_channel_name">Dashcam Ingestion Service</string>
+    <string name="ingestion_service_notification_title">Dashcam Ingestion Active</string>
+    <string name="ingestion_service_notification_text">Downloading and processing dashcam footage...</string>
+</resources>
