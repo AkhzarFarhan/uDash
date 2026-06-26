@@ -123,7 +123,8 @@ class DashcamIngestionService : Service() {
                 val file = File(cacheDir, clip.fileName)
                 
                 // Storage Exhaustion Guard (Architecture 6)
-                if (cacheDir.usableSpace < response.body?.contentLength() ?: 0 * 1.5) {
+                val contentLength = response.body?.contentLength() ?: 0L
+                if (cacheDir.usableSpace < (contentLength * 1.5).toLong()) {
                     throw Exception("Storage Exhaustion")
                 }
 

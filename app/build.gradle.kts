@@ -34,6 +34,11 @@ android {
     kotlinOptions {
         jvmTarget = "1.8"
     }
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1,DEPENDENCIES}"
+        }
+    }
 }
 
 dependencies {
@@ -51,13 +56,13 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.9.0")
 
     // Video Processing
-    implementation("com.extas:ffmpeg-kit-android-min-gpl:6.0-LTS")
+    implementation("io.github.trongnhan136:ffmpeg-kit-min-gpl:7.1.5")
 
     // Network & Authentication
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.google.api-client:google-api-client-android:2.2.0")
     implementation("com.google.oauth-client:google-oauth-client-jetty:1.34.1")
-    implementation("com.google.apis:google-api-services-youtube:v3-rev20231014-2.0.0")
+    implementation("com.google.apis:google-api-services-youtube:v3-rev20231011-2.0.0")
     
     // Security
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
