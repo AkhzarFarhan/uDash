@@ -158,7 +158,7 @@ class YouTubeUploadWorker(
      * allocation parameter to MediaHttpUploader.MINIMUM_CHUNK_SIZE (256 KB) or higher
      * to allow resilient upload state resumption over shaky connections."
      */
-    private fun upload(youtube: YouTube, dateStr: String, filePath: String, onComplete: (Boolean) -> Unit) {
+    private suspend fun upload(youtube: YouTube, dateStr: String, filePath: String, onComplete: (Boolean) -> Unit) {
         db.dailyMergeDao().updateUploadStatus(dateStr, UploadStatus.UPLOADING, null, System.currentTimeMillis())
 
         val video = Video().apply {
@@ -182,7 +182,7 @@ class YouTubeUploadWorker(
         val uploader = insertRequest.mediaHttpUploader
         uploader.isDirectUploadEnabled = false // Enable resumable
         uploader.chunkSize = CHUNK_SIZE
-        uploader.setProgressListener { bytesUploaded, contentLength ->
+        uploader.setProgressListener { _ ->
             // Could log progress here
         }
 
