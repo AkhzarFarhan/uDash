@@ -69,17 +69,16 @@ class FfmpegOrchestrator(
 
         val success = deferred.await()
 
-        // 4. Atomic DB Transaction on result
-        if (success) {
-            database.dailyMergeDao().completeMergeAndPurgeRaw(
-                dateString = dateStr,
-                mergedPath = outputFile.absolutePath,
-                totalSize = outputFile.length(),
-                rawClipDao = database.rawClipDao()
-            )
-        } else {
-            database.dailyMergeDao().markMergeFailed(dateStr)
-        }
+            // 4. Atomic DB Transaction on result
+            if (success) {
+                database.dailyMergeDao().completeMergeAndPurgeRaw(
+                    dateString = dateStr,
+                    mergedPath = outputFile.absolutePath,
+                    totalSize = outputFile.length()
+                )
+            } else {
+                database.dailyMergeDao().markMergeFailed(dateStr)
+            }
         manifestFile.delete() // Clean up manifest file
     }
 

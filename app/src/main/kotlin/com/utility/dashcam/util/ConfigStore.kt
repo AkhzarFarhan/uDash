@@ -3,8 +3,6 @@ package com.utility.dashcam.util
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKeys
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 
 /**
  * EncryptedSharedPreferences-backed configuration store.
@@ -35,7 +33,6 @@ object ConfigStore {
     private const val DEFAULT_INGESTION_ENABLED = false
 
     private lateinit var prefs: android.content.SharedPreferences
-    private val gson = Gson()
 
     private fun init(context: Context) {
         if (::prefs.isInitialized) return
@@ -152,40 +149,5 @@ object ConfigStore {
     fun setIngestionEnabled(context: Context, enabled: Boolean) {
         init(context)
         prefs.edit().putBoolean(KEY_INGESTION_ENABLED, enabled).apply()
-    }
-
-    // --- Bulk export/import for backup/restore (optional but handy) ---
-
-    fun exportAll(context: Context): String {
-        init(context)
-        val map = mutableMapOf<String, Any>()
-        val keys = setOf(
-            KEY_DASHCAM_IP, KEY_DASHCAM_SSID_PREFIX, KEY_HOME_WIFI_SSID,
-            KEY_YOUTUBE_PRIVACY, KEY_OAUTH_CLIENT_ID, KEY_OAUTH_CLIENT_SECRET,
-            KEY_OAUTH_REFRESH_TOKEN, KEY_OAUTH_ACCOUNT_NAME, KEY_INGESTION_ENABLED
-        )
-        keys.forEach { key ->
-            when {
-                prefs.contains(key) && prefs.getAll()[key] is String -> map[key] = prefs.getString(key, "") ?: ""
-                prefs.contains(key) && prefs.getAll()[key] is Boolean -> map[key] = prefs.getBoolean(key, false)
-                else -> map[key] = ""
-            }
-        }
-        return gson.toJson(map)
-    }
-
-    fun importAll(context: Context, json: String) {
-        init(context)
-        val type = object : TypeToken<Map<String, Any>>() {}.type
-        val map = gson.fromJson<Map<String, Any>>(json, type)
-        val editor = prefs.edit()
-        map.forEach { (k, v) ->
-            when (v) {
-                is String -> editor.putString(k, v)
-                is Boolean -> editor.putBoolean(k, v)
-                else -> { /* ignore */ }
-            }
-        }
-        editor.apply()
     }
 }

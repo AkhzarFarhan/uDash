@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:fillViewport="true"
     android:padding="16dp"
     tools:context=".MainActivity">
 
@@ -16,174 +18,352 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="uDash Dashboard"
-            android:textSize="24sp"
+            android:text="@string/app_name"
+            android:textSize="28sp"
             android:textStyle="bold"
-            android:layout_marginBottom="24dp" />
+            android:layout_marginBottom="24dp"
+            android:textAppearance="?attr/textAppearanceHeadlineMedium" />
 
-        <!-- Dashcam IP -->
-        <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/tilDashcamIp"
+        <!-- Section: Dashcam Settings -->
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.Material3.CardView.Filled"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="16dp"
-            android:hint="Dashcam IP">
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etDashcamIp"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="4dp">
+
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:inputType="textUri" />
-        </com.google.android.material.textfield.TextInputLayout>
+                android:orientation="vertical"
+                android:padding="16dp">
 
-        <!-- Dashcam SSID Prefix -->
-        <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/tilDashcamSsid"
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/section_dashcam"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="16dp"
+                    android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+                <!-- Dashcam IP -->
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/tilDashcamIp"
+                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:hint="@string/hint_dashcam_ip">
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etDashcamIp"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="textUri" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <!-- Dashcam SSID Prefix -->
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/tilDashcamSsid"
+                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:hint="@string/hint_dashcam_ssid">
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etDashcamSsid"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <!-- Home Wi-Fi SSID -->
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/tilHomeSsid"
+                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:hint="@string/hint_home_ssid">
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etHomeSsid"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <!-- Save Config Button -->
+                <Button
+                    android:id="@+id/btnSaveConfig"
+                    style="@style/Widget.Material3.Button"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/btn_save" />
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Section: YouTube Upload Settings -->
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.Material3.CardView.Filled"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="16dp"
-            android:hint="Dashcam SSID Prefix">
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etDashcamSsid"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content" />
-        </com.google.android.material.textfield.TextInputLayout>
+            app:cardCornerRadius="16dp"
+            app:cardElevation="4dp">
 
-        <!-- Home Wi-Fi SSID -->
-        <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/tilHomeSsid"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:hint="Home Wi-Fi SSID">
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etHomeSsid"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content" />
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <!-- YouTube Privacy -->
-        <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/tilYoutubePrivacy"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:hint="YouTube Privacy">
-            <AutoCompleteTextView
-                android:id="@+id/actvYoutubePrivacy"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:inputType="none" />
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <!-- OAuth Client ID -->
-        <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/tilClientId"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:hint="OAuth Client ID">
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etClientId"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content" />
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <!-- OAuth Client Secret -->
-        <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/tilClientSecret"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:hint="OAuth Client Secret">
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etClientSecret"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:inputType="textPassword" />
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <!-- OAuth Refresh Token -->
-        <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/tilRefreshToken"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:hint="OAuth Refresh Token">
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etRefreshToken"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:inputType="textPassword" />
-        </com.google.android.material.textfield.TextInputLayout>
+                android:orientation="vertical"
+                android:padding="16dp">
 
-        <!-- Save Config Button -->
-        <Button
-            android:id="@+id/btnSaveConfig"
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/section_youtube"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="16dp"
+                    android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+                <!-- YouTube Privacy Dropdown -->
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/tilYoutubePrivacy"
+                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:hint="@string/hint_privacy">
+                    <AutoCompleteTextView
+                        android:id="@+id/actvYoutubePrivacy"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="none" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <!-- OAuth Client ID -->
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/tilClientId"
+                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:hint="@string/hint_client_id">
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etClientId"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <!-- OAuth Client Secret -->
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/tilClientSecret"
+                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:hint="@string/hint_client_secret">
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etClientSecret"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="textPassword" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <!-- OAuth Refresh Token -->
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/tilRefreshToken"
+                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:hint="@string/hint_refresh_token">
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etRefreshToken"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="textPassword" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Section: Pipeline Status (Live from Room DB) -->
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.Material3.CardView.Filled"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="16dp"
-            android:text="Save Configuration" />
+            app:cardCornerRadius="16dp"
+            app:cardElevation="4dp">
 
-        <!-- Service Controls -->
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="?android:attr/listDivider"
-            android:layout_marginVertical="16dp" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Service Controls"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="16dp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/section_status"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="16dp"
+                    android:textAppearance="?attr/textAppearanceTitleMedium" />
 
-        <Button
-            android:id="@+id/btnStartIngestion"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp"
-            android:text="Start Ingestion Service" />
+                <!-- Status Grid -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:weightSum="4"
+                    android:layout_marginBottom="16dp">
 
-        <Button
-            android:id="@+id/btnStopIngestion"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:text="Stop Ingestion Service" />
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:gravity="center"
+                        android:padding="8dp">
+                        <TextView
+                            android:id="@+id/tvRawClipsCount"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="0"
+                            android:textSize="28sp"
+                            android:textStyle="bold"
+                            android:textColor="?attr/colorPrimary" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/label_raw_clips"
+                            android:textSize="12sp"
+                            android:textColor="?android:attr/textColorSecondary" />
+                    </LinearLayout>
 
-        <!-- Upload Controls -->
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="?android:attr/listDivider"
-            android:layout_marginVertical="16dp" />
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:gravity="center"
+                        android:padding="8dp">
+                        <TextView
+                            android:id="@+id/tvPendingMergesCount"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="0"
+                            android:textSize="28sp"
+                            android:textStyle="bold"
+                            android:textColor="?attr/colorSecondary" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/label_pending_merges"
+                            android:textSize="12sp"
+                            android:textColor="?android:attr/textColorSecondary" />
+                    </LinearLayout>
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Upload Controls"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="16dp" />
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:gravity="center"
+                        android:padding="8dp">
+                        <TextView
+                            android:id="@+id/tvPendingUploadsCount"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="0"
+                            android:textSize="28sp"
+                            android:textStyle="bold"
+                            android:textColor="?attr/colorTertiary" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/label_pending_uploads"
+                            android:textSize="12sp"
+                            android:textColor="?android:attr/textColorSecondary" />
+                    </LinearLayout>
 
-        <Button
-            android:id="@+id/btnEnqueueUpload"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp"
-            android:text="Enqueue YouTube Upload (WorkManager)" />
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:gravity="center"
+                        android:padding="8dp">
+                        <TextView
+                            android:id="@+id/tvCompletedUploadsCount"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="0"
+                            android:textSize="28sp"
+                            android:textStyle="bold"
+                            android:textColor="#4CAF50" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/label_completed_uploads"
+                            android:textSize="12sp"
+                            android:textColor="?android:attr/textColorSecondary" />
+                    </LinearLayout>
 
-        <!-- Status -->
-        <TextView
-            android:id="@+id/tvStatus"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:gravity="center"
-            android:text="Status: Idle"
-            android:textColor="?android:attr/textColorSecondary" />
+                </LinearLayout>
+
+                <!-- Current Activity Status -->
+                <TextView
+                    android:id="@+id/tvCurrentStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:text="@string/status_idle"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:padding="12dp"
+                    android:background="?attr/colorSurfaceContainerHighest"
+                    android:layout_marginBottom="16dp"
+                    android:layout_marginHorizontal="8dp"
+                    android:layout_marginTop="8dp" />
+
+                <!-- Service Controls -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:gravity="center_horizontal">
+
+                    <Button
+                        android:id="@+id/btnStartIngestion"
+                        style="@style/Widget.Material3.Button"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        android:text="@string/btn_start_ingestion" />
+
+                    <Button
+                        android:id="@+id/btnStopIngestion"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="16dp"
+                        android:text="@string/btn_stop_ingestion" />
+
+                    <Button
+                        android:id="@+id/btnEnqueueUpload"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/btn_enqueue_upload" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
 
     </LinearLayout>
 </ScrollView>

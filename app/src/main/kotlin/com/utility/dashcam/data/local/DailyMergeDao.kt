@@ -1,12 +1,7 @@
 package com.utility.dashcam.data.local
 
 import androidx.room.*
-import kotlinx.coroutines.flow.Flow
 
-/**
- * DAO for daily merged compilations ready for YouTube upload.
- * Handles state machine: PENDING/PROCESSING/COMPLETED/FAILED → IDLE/QUEUED/UPLOADING/SUCCESS/FAILED
- */
 @Dao
 interface DailyMergeDao {
 
@@ -19,24 +14,24 @@ interface DailyMergeDao {
     @Query("SELECT * FROM daily_merges WHERE uploadStatus IN ('IDLE', 'FAILED')")
     suspend fun getPendingUploads(): List<DailyMergeEntity>
 
+    @Query("SELECT * FROM daily_merges ORDER BY dateString DESC")
+    fun getAllMerges(): kotlinx.coroutines.flow.Flow<List<DailyMergeEntity>>
+
     @Query("UPDATE daily_merges SET mergeStatus = :status WHERE dateString = :dateString")
     suspend fun updateMergeStatus(dateString: String, status: String)
 
     @Query("UPDATE daily_merges SET uploadStatus = :status, youtubeVideoId = :videoId, lastAttemptTimestamp = :timestamp WHERE dateString = :dateString")
     suspend fun updateUploadStatus(dateString: String, status: String, videoId: String?, timestamp: Long)
 
-    /**
-     * Atomic transaction: mark merge COMPLETED with merged path/size, and purge raw clips for that date.
-     * Architecture §5.2: "Atomic transactional switch"
-     */
+    @Query("UPDATE daily_merges SET localMergedPath = NULL WHERE dateString = :dateString")
+    suspend fun clearLocalMergedPath(dateString: String)
+
+    // Cross-table DELETE: Room allows raw SQL across tables
+    @Query("DELETE FROM raw_clips WHERE dateString = :dateString")
+    suspend fun deleteRawClipsByDate(dateString: String)
+
     @Transaction
-    suspend fun completeMergeAndPurgeRaw(
-        dateString: String,
-        mergedPath: String,
-        totalSize: Long,
-        rawClipDao: RawClipDao
-    ) {
-        // Update merge entity to COMPLETED with path and size
+    suspend fun completeMergeAndPurgeRaw(dateString: String, mergedPath: String, totalSize: Long) {
         val existing = getDailyMerge(dateString)
         if (existing != null) {
             insertDailyMerge(existing.copy(
@@ -45,7 +40,6 @@ interface DailyMergeDao {
                 mergeStatus = MergeStatus.COMPLETED
             ))
         } else {
-            // Should not happen normally, but handle gracefully
             insertDailyMerge(DailyMergeEntity(
                 dateString = dateString,
                 localMergedPath = mergedPath,
@@ -56,13 +50,9 @@ interface DailyMergeDao {
                 lastAttemptTimestamp = 0
             ))
         }
-        // Purge raw clips for this date (architecture §5.2 + §6 cleanup)
-        rawClipDao.deleteCachedClipsByDate(dateString)
+        deleteRawClipsByDate(dateString)
     }
 
-    /**
-     * Mark merge as FAILED (e.g., FFmpeg concat error)
-     */
     @Transaction
     suspend fun markMergeFailed(dateString: String) {
         updateMergeStatus(dateString, MergeStatus.FAILED)

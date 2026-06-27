@@ -1,8 +1,9 @@
 package com.utility.dashcam
 
-import android.content.ComponentName
-import android.content.Context
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.widget.ArrayAdapter
 import android.widget.AutoCompleteTextView
@@ -11,14 +12,26 @@ import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import com.utility.dashcam.data.local.AppDatabase
+import com.utility.dashcam.data.local.DownloadStatus
+import com.utility.dashcam.data.local.MergeStatus
+import com.utility.dashcam.data.local.UploadStatus
 import com.utility.dashcam.service.DashcamIngestionService
 import com.utility.dashcam.util.ConfigStore
 import com.utility.dashcam.worker.YouTubeUploadWorker
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 /**
- * Main Dashboard Activity.
- * Provides a UI to configure all runtime parameters (persisted in EncryptedSharedPreferences via ConfigStore)
+ * Main Dashboard Activity - Material 3 redesign.
+ * Provides UI to configure all runtime parameters (persisted in EncryptedSharedPreferences via ConfigStore)
  * and controls for the ingestion service and upload worker.
+ * Observes Room DB via Flow for live pipeline status.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -37,16 +50,57 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnStopIngestion: Button
     private lateinit var btnEnqueueUpload: Button
 
-    // Status
-    private lateinit var tvStatus: TextView
+    // Status displays
+    private lateinit var tvRawClipsCount: TextView
+    private lateinit var tvPendingMergesCount: TextView
+    private lateinit var tvPendingUploadsCount: TextView
+    private lateinit var tvCompletedUploadsCount: TextView
+    private lateinit var tvCurrentStatus: TextView
+
+    private val db by lazy { AppDatabase.getDatabase(this) }
+
+    private val permissionRequestCode = 1001
+    private val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        arrayOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.POST_NOTIFICATIONS
+        )
+    } else {
+        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        requestPermissionsIfNeeded()
         initViews()
         loadCurrentConfig()
         setupListeners()
+        observePipelineStatus()
+    }
+
+    private fun requestPermissionsIfNeeded() {
+        val missingPermissions = requiredPermissions.filter { permission ->
+            ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missingPermissions.isNotEmpty()) {
+            ActivityCompat.requestPermissions(this, missingPermissions.toTypedArray(), permissionRequestCode)
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == permissionRequestCode) {
+            val allGranted = grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+            if (!allGranted) {
+                Toast.makeText(this, "Some permissions denied - auto-detection may not work", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     private fun initViews() {
@@ -63,7 +117,11 @@ class MainActivity : AppCompatActivity() {
         btnStopIngestion = findViewById(R.id.btnStopIngestion)
         btnEnqueueUpload = findViewById(R.id.btnEnqueueUpload)
 
-        tvStatus = findViewById(R.id.tvStatus)
+        tvRawClipsCount = findViewById(R.id.tvRawClipsCount)
+        tvPendingMergesCount = findViewById(R.id.tvPendingMergesCount)
+        tvPendingUploadsCount = findViewById(R.id.tvPendingUploadsCount)
+        tvCompletedUploadsCount = findViewById(R.id.tvCompletedUploadsCount)
+        tvCurrentStatus = findViewById(R.id.tvCurrentStatus)
 
         // Privacy dropdown adapter
         val privacyOptions = arrayOf("private", "unlisted", "public")
@@ -82,21 +140,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupListeners() {
-        btnSaveConfig.setOnClickListener {
-            saveConfig()
-        }
-
-        btnStartIngestion.setOnClickListener {
-            startIngestionService()
-        }
-
-        btnStopIngestion.setOnClickListener {
-            stopIngestionService()
-        }
-
-        btnEnqueueUpload.setOnClickListener {
-            enqueueUpload()
-        }
+        btnSaveConfig.setOnClickListener { saveConfig() }
+        btnStartIngestion.setOnClickListener { startIngestionService() }
+        btnStopIngestion.setOnClickListener { stopIngestionService() }
+        btnEnqueueUpload.setOnClickListener { enqueueUpload() }
     }
 
     private fun saveConfig() {
@@ -108,19 +155,13 @@ class MainActivity : AppCompatActivity() {
         ConfigStore.setOAuthClientSecret(this, etClientSecret.text.toString().trim())
         ConfigStore.setOAuthRefreshToken(this, etRefreshToken.text.toString().trim())
 
-        updateStatus("Configuration saved (encrypted)")
-        Toast.makeText(this, "Configuration saved", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Configuration saved (encrypted)", Toast.LENGTH_SHORT).show()
     }
 
     private fun startIngestionService() {
         ConfigStore.setIngestionEnabled(this, true)
         val intent = Intent(this, DashcamIngestionService::class.java)
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            startForegroundService(intent)
-        } else {
-            startService(intent)
-        }
-        updateStatus("Ingestion service started")
+        startForegroundService(intent)
         Toast.makeText(this, "Ingestion service started", Toast.LENGTH_SHORT).show()
     }
 
@@ -128,7 +169,6 @@ class MainActivity : AppCompatActivity() {
         ConfigStore.setIngestionEnabled(this, false)
         val intent = Intent(this, DashcamIngestionService::class.java)
         stopService(intent)
-        updateStatus("Ingestion service stopped")
         Toast.makeText(this, "Ingestion service stopped", Toast.LENGTH_SHORT).show()
     }
 
@@ -137,17 +177,59 @@ class MainActivity : AppCompatActivity() {
         if (ConfigStore.getOAuthClientId(this).isNullOrBlank()
             || ConfigStore.getOAuthClientSecret(this).isNullOrBlank()
             || ConfigStore.getOAuthRefreshToken(this).isNullOrBlank()) {
-            updateStatus("Error: OAuth credentials not configured")
             Toast.makeText(this, "Please configure OAuth credentials first", Toast.LENGTH_LONG).show()
             return
         }
 
         YouTubeUploadWorker.enqueueUpload(this)
-        updateStatus("Upload work enqueued (UNMETERED + charging constraints)")
-        Toast.makeText(this, "Upload enqueued", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Upload enqueued (UNMETERED + charging constraints)", Toast.LENGTH_SHORT).show()
     }
 
-    private fun updateStatus(msg: String) {
-        tvStatus.text = "Status: $msg"
+    /**
+     * Observe Room DB via Flow for live pipeline status.
+     * Combines multiple queries into a single UI update.
+     */
+    private fun observePipelineStatus() {
+        lifecycleScope.launch {
+            val rawClipsFlow = db.rawClipDao().getRawClipsByStatusFlow(DownloadStatus.COMPLETED)
+                .map { it.size }
+                .distinctUntilChanged()
+
+            val pendingMergesFlow = db.dailyMergeDao().getAllMerges()
+                .map { merges ->
+                    merges.count { it.mergeStatus == MergeStatus.PENDING || it.mergeStatus == MergeStatus.PROCESSING }
+                }
+                .distinctUntilChanged()
+
+            val pendingUploadsFlow = db.dailyMergeDao().getAllMerges()
+                .map { merges ->
+                    merges.count { it.uploadStatus == UploadStatus.IDLE || it.uploadStatus == UploadStatus.UPLOADING || it.uploadStatus == UploadStatus.FAILED }
+                }
+                .distinctUntilChanged()
+
+            val completedUploadsFlow = db.dailyMergeDao().getAllMerges()
+                .map { merges ->
+                    merges.count { it.uploadStatus == UploadStatus.SUCCESS }
+                }
+                .distinctUntilChanged()
+
+            combine(rawClipsFlow, pendingMergesFlow, pendingUploadsFlow, completedUploadsFlow) { raw, pendingM, pendingU, completedU ->
+                listOf(raw, pendingM, pendingU, completedU)
+            }.collect { (rawCount, pendingMergeCount, pendingUploadCount, completedUploadCount) ->
+                tvRawClipsCount.text = rawCount.toString()
+                tvPendingMergesCount.text = pendingMergeCount.toString()
+                tvPendingUploadsCount.text = pendingUploadCount.toString()
+                tvCompletedUploadsCount.text = completedUploadCount.toString()
+
+                // Update current activity status text
+                val statusText = when {
+                    pendingMergeCount > 0 -> getString(R.string.status_merging)
+                    pendingUploadCount > 0 -> getString(R.string.status_uploading)
+                    rawCount > 0 -> getString(R.string.status_ingesting)
+                    else -> getString(R.string.status_idle)
+                }
+                tvCurrentStatus.text = statusText
+            }
+        }
     }
 }
