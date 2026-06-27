@@ -34,7 +34,7 @@ object ConfigStore {
     private const val DEFAULT_YOUTUBE_PRIVACY = "private" // "private" or "unlisted"
     private const val DEFAULT_INGESTION_ENABLED = false
 
-    private lateinit var prefs: EncryptedSharedPreferences
+    private lateinit var prefs: android.content.SharedPreferences
     private val gson = Gson()
 
     private fun init(context: Context) {
@@ -166,7 +166,7 @@ object ConfigStore {
         )
         keys.forEach { key ->
             when {
-                prefs.contains(key) && prefs.getAll()[key] is String -> map[key] = prefs.getString(key, "")
+                prefs.contains(key) && prefs.getAll()[key] is String -> map[key] = prefs.getString(key, "") ?: ""
                 prefs.contains(key) && prefs.getAll()[key] is Boolean -> map[key] = prefs.getBoolean(key, false)
                 else -> map[key] = ""
             }
