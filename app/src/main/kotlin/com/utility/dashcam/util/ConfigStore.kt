@@ -32,50 +32,48 @@ object ConfigStore {
     private const val DEFAULT_YOUTUBE_PRIVACY = "private" // "private" or "unlisted"
     private const val DEFAULT_INGESTION_ENABLED = false
 
-    private lateinit var prefs: android.content.SharedPreferences
+    @Volatile
+    private var prefs: android.content.SharedPreferences? = null
 
-    private fun init(context: Context) {
-        if (::prefs.isInitialized) return
-        val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
-        prefs = EncryptedSharedPreferences.create(
-            PREFS_NAME,
-            masterKeyAlias,
-            context,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
+    @Synchronized
+    private fun init(context: Context): android.content.SharedPreferences {
+        if (prefs == null) {
+            val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
+            prefs = EncryptedSharedPreferences.create(
+                PREFS_NAME,
+                masterKeyAlias,
+                context.applicationContext,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        }
+        return prefs!!
     }
 
     // --- Dashcam Network Config ---
 
     fun getDashcamIp(context: Context): String {
-        init(context)
-        return prefs.getString(KEY_DASHCAM_IP, DEFAULT_DASHCAM_IP) ?: DEFAULT_DASHCAM_IP
+        return init(context).getString(KEY_DASHCAM_IP, DEFAULT_DASHCAM_IP) ?: DEFAULT_DASHCAM_IP
     }
 
     fun setDashcamIp(context: Context, ip: String) {
-        init(context)
-        prefs.edit().putString(KEY_DASHCAM_IP, ip).apply()
+        init(context).edit().putString(KEY_DASHCAM_IP, ip).apply()
     }
 
     fun getDashcamSsidPrefix(context: Context): String {
-        init(context)
-        return prefs.getString(KEY_DASHCAM_SSID_PREFIX, DEFAULT_DASHCAM_SSID_PREFIX) ?: DEFAULT_DASHCAM_SSID_PREFIX
+        return init(context).getString(KEY_DASHCAM_SSID_PREFIX, DEFAULT_DASHCAM_SSID_PREFIX) ?: DEFAULT_DASHCAM_SSID_PREFIX
     }
 
     fun setDashcamSsidPrefix(context: Context, prefix: String) {
-        init(context)
-        prefs.edit().putString(KEY_DASHCAM_SSID_PREFIX, prefix).apply()
+        init(context).edit().putString(KEY_DASHCAM_SSID_PREFIX, prefix).apply()
     }
 
     fun getHomeWifiSsid(context: Context): String {
-        init(context)
-        return prefs.getString(KEY_HOME_WIFI_SSID, DEFAULT_HOME_WIFI_SSID) ?: DEFAULT_HOME_WIFI_SSID
+        return init(context).getString(KEY_HOME_WIFI_SSID, DEFAULT_HOME_WIFI_SSID) ?: DEFAULT_HOME_WIFI_SSID
     }
 
     fun setHomeWifiSsid(context: Context, ssid: String) {
-        init(context)
-        prefs.edit().putString(KEY_HOME_WIFI_SSID, ssid).apply()
+        init(context).edit().putString(KEY_HOME_WIFI_SSID, ssid).apply()
     }
 
     fun getDashcamManifestUrl(context: Context): String {
@@ -85,14 +83,12 @@ object ConfigStore {
     // --- YouTube Upload Config ---
 
     fun getYoutubePrivacy(context: Context): String {
-        init(context)
-        val v = prefs.getString(KEY_YOUTUBE_PRIVACY, DEFAULT_YOUTUBE_PRIVACY) ?: DEFAULT_YOUTUBE_PRIVACY
+        val v = init(context).getString(KEY_YOUTUBE_PRIVACY, DEFAULT_YOUTUBE_PRIVACY) ?: DEFAULT_YOUTUBE_PRIVACY
         return if (v == "private" || v == "unlisted") v else DEFAULT_YOUTUBE_PRIVACY
     }
 
     fun setYoutubePrivacy(context: Context, privacy: String) {
-        init(context)
-        prefs.edit().putString(KEY_YOUTUBE_PRIVACY, privacy).apply()
+        init(context).edit().putString(KEY_YOUTUBE_PRIVACY, privacy).apply()
     }
 
     // --- OAuth2 Refresh-token credentials (headless background upload) ---
@@ -100,54 +96,44 @@ object ConfigStore {
     // We store client_id, client_secret, refresh_token, and account_name for token rotation.
 
     fun getOAuthClientId(context: Context): String? {
-        init(context)
-        return prefs.getString(KEY_OAUTH_CLIENT_ID, null)
+        return init(context).getString(KEY_OAUTH_CLIENT_ID, null)
     }
 
     fun setOAuthClientId(context: Context, clientId: String) {
-        init(context)
-        prefs.edit().putString(KEY_OAUTH_CLIENT_ID, clientId).apply()
+        init(context).edit().putString(KEY_OAUTH_CLIENT_ID, clientId).apply()
     }
 
     fun getOAuthClientSecret(context: Context): String? {
-        init(context)
-        return prefs.getString(KEY_OAUTH_CLIENT_SECRET, null)
+        return init(context).getString(KEY_OAUTH_CLIENT_SECRET, null)
     }
 
     fun setOAuthClientSecret(context: Context, secret: String) {
-        init(context)
-        prefs.edit().putString(KEY_OAUTH_CLIENT_SECRET, secret).apply()
+        init(context).edit().putString(KEY_OAUTH_CLIENT_SECRET, secret).apply()
     }
 
     fun getOAuthRefreshToken(context: Context): String? {
-        init(context)
-        return prefs.getString(KEY_OAUTH_REFRESH_TOKEN, null)
+        return init(context).getString(KEY_OAUTH_REFRESH_TOKEN, null)
     }
 
     fun setOAuthRefreshToken(context: Context, token: String) {
-        init(context)
-        prefs.edit().putString(KEY_OAUTH_REFRESH_TOKEN, token).apply()
+        init(context).edit().putString(KEY_OAUTH_REFRESH_TOKEN, token).apply()
     }
 
     fun getOAuthAccountName(context: Context): String? {
-        init(context)
-        return prefs.getString(KEY_OAUTH_ACCOUNT_NAME, null)
+        return init(context).getString(KEY_OAUTH_ACCOUNT_NAME, null)
     }
 
     fun setOAuthAccountName(context: Context, name: String) {
-        init(context)
-        prefs.edit().putString(KEY_OAUTH_ACCOUNT_NAME, name).apply()
+        init(context).edit().putString(KEY_OAUTH_ACCOUNT_NAME, name).apply()
     }
 
     // --- Service Control ---
 
     fun isIngestionEnabled(context: Context): Boolean {
-        init(context)
-        return prefs.getBoolean(KEY_INGESTION_ENABLED, DEFAULT_INGESTION_ENABLED)
+        return init(context).getBoolean(KEY_INGESTION_ENABLED, DEFAULT_INGESTION_ENABLED)
     }
 
     fun setIngestionEnabled(context: Context, enabled: Boolean) {
-        init(context)
-        prefs.edit().putBoolean(KEY_INGESTION_ENABLED, enabled).apply()
+        init(context).edit().putBoolean(KEY_INGESTION_ENABLED, enabled).apply()
     }
 }

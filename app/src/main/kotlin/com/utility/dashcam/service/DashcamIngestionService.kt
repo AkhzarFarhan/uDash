@@ -27,6 +27,7 @@ import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 class DashcamIngestionService : Service() {
 
@@ -36,6 +37,8 @@ class DashcamIngestionService : Service() {
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private val db by lazy { AppDatabase.getDatabase(this) }
     private val CHANNEL_ID = "dashcam_ingestion_channel"
+    private val isIngesting = AtomicBoolean(false)
+    private var dashcamOkHttpClient: OkHttpClient? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -49,7 +52,9 @@ class DashcamIngestionService : Service() {
     private fun isConnectedToDashcamAp(): Boolean {
         val info = wifiManager.connectionInfo
         val ssid = info.ssid?.replace("\"", "") ?: return false
+        if ("<unknown ssid>" == ssid) return false
         val prefix = ConfigStore.getDashcamSsidPrefix(this)
+        if (prefix.isBlank()) return false
         return ssid.startsWith(prefix, ignoreCase = true)
     }
 
@@ -61,13 +66,20 @@ class DashcamIngestionService : Service() {
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 if (!isConnectedToDashcamAp()) return
-                val boundSocketFactory = network.socketFactory
-                val okHttpClient = OkHttpClient.Builder()
-                    .socketFactory(boundSocketFactory)
+                if (!isIngesting.compareAndSet(false, true)) return
+                // Reuse the OkHttpClient bound to the dashcam network
+                val client = dashcamOkHttpClient ?: OkHttpClient.Builder()
+                    .socketFactory(network.socketFactory)
                     .connectTimeout(5, TimeUnit.SECONDS)
                     .readTimeout(30, TimeUnit.SECONDS)
-                    .build()
-                serviceScope.launch { executeCameraIngestion(okHttpClient) }
+                    .build().also { dashcamOkHttpClient = it }
+                serviceScope.launch {
+                    try {
+                        executeCameraIngestion(client)
+                    } finally {
+                        isIngesting.set(false)
+                    }
+                }
             }
             override fun onLost(network: Network) { }
         }
@@ -84,6 +96,7 @@ class DashcamIngestionService : Service() {
             val manifestText = response.body?.string() ?: return
             val clips = parseManifest(manifestText)
             db.rawClipDao().insertRawClips(clips)
+            // Download only the clips that are PENDING (newly inserted or previously failed)
             val pending = db.rawClipDao().getRawClipsByStatus(DownloadStatus.PENDING)
             pending.forEach { clip -> downloadClip(client, clip) }
             checkAndTriggerMerge()
@@ -106,15 +119,26 @@ class DashcamIngestionService : Service() {
         try {
             val response = client.newCall(request).execute()
             if (response.isSuccessful) {
+                val body = response.body ?: throw IllegalStateException("Response body is null")
                 val file = File(cacheDir, clip.fileName)
-                val contentLength = response.body?.contentLength() ?: 0L
-                if (cacheDir.usableSpace < (contentLength * 1.5).toLong()) {
-                    throw IllegalStateException("Storage Exhaustion")
+                // OkHttp returns -1 for unknown content length; only check storage if known
+                val contentLength = body.contentLength()
+                if (contentLength > 0) {
+                    val requiredSpace = (contentLength * 1.5).toLong()
+                    if (cacheDir.usableSpace < requiredSpace) {
+                        throw IllegalStateException("Storage Exhaustion")
+                    }
                 }
-                response.body?.byteStream()?.use { input ->
+                body.byteStream().use { input ->
                     FileOutputStream(file).use { output -> input.copyTo(output) }
                 }
-                db.rawClipDao().markDownloadCompleted(clip.fileName, file.absolutePath)
+                // Verify file was actually written (guard against zero-byte writes)
+                if (file.length() > 0L) {
+                    db.rawClipDao().markDownloadCompleted(clip.fileName, file.absolutePath)
+                } else {
+                    file.delete()
+                    db.rawClipDao().updateDownloadStatus(clip.fileName, DownloadStatus.FAILED, null)
+                }
             } else {
                 db.rawClipDao().updateDownloadStatus(clip.fileName, DownloadStatus.FAILED, null)
             }

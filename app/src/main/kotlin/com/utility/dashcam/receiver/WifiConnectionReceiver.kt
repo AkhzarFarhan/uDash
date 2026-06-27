@@ -26,7 +26,9 @@ class WifiConnectionReceiver : BroadcastReceiver() {
         val wifiManager = context.getSystemService(Context.WIFI_SERVICE) as WifiManager
         val info = wifiManager.connectionInfo
         val ssid = info.ssid?.replace("\"", "") ?: return
+        if ("<unknown ssid>" == ssid) return
         val homeSsid = ConfigStore.getHomeWifiSsid(context)
+        if (homeSsid.isBlank()) return
         if (ssid == homeSsid) {
             YouTubeUploadWorker.enqueueUpload(context)
         }

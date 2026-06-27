@@ -14,7 +14,9 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.utility.dashcam.data.local.AppDatabase
 import com.utility.dashcam.data.local.DownloadStatus
 import com.utility.dashcam.data.local.MergeStatus
@@ -191,44 +193,46 @@ class MainActivity : AppCompatActivity() {
      */
     private fun observePipelineStatus() {
         lifecycleScope.launch {
-            val rawClipsFlow = db.rawClipDao().getRawClipsByStatusFlow(DownloadStatus.COMPLETED)
-                .map { it.size }
-                .distinctUntilChanged()
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                val rawClipsFlow = db.rawClipDao().getRawClipsByStatusFlow(DownloadStatus.COMPLETED)
+                    .map { it.size }
+                    .distinctUntilChanged()
 
-            val pendingMergesFlow = db.dailyMergeDao().getAllMerges()
-                .map { merges ->
-                    merges.count { it.mergeStatus == MergeStatus.PENDING || it.mergeStatus == MergeStatus.PROCESSING }
+                val pendingMergesFlow = db.dailyMergeDao().getAllMerges()
+                    .map { merges ->
+                        merges.count { it.mergeStatus == MergeStatus.PENDING || it.mergeStatus == MergeStatus.PROCESSING }
+                    }
+                    .distinctUntilChanged()
+
+                val pendingUploadsFlow = db.dailyMergeDao().getAllMerges()
+                    .map { merges ->
+                        merges.count { it.uploadStatus == UploadStatus.IDLE || it.uploadStatus == UploadStatus.UPLOADING || it.uploadStatus == UploadStatus.FAILED }
+                    }
+                    .distinctUntilChanged()
+
+                val completedUploadsFlow = db.dailyMergeDao().getAllMerges()
+                    .map { merges ->
+                        merges.count { it.uploadStatus == UploadStatus.SUCCESS }
+                    }
+                    .distinctUntilChanged()
+
+                combine(rawClipsFlow, pendingMergesFlow, pendingUploadsFlow, completedUploadsFlow) { raw, pendingM, pendingU, completedU ->
+                    listOf(raw, pendingM, pendingU, completedU)
+                }.collect { (rawCount, pendingMergeCount, pendingUploadCount, completedUploadCount) ->
+                    tvRawClipsCount.text = rawCount.toString()
+                    tvPendingMergesCount.text = pendingMergeCount.toString()
+                    tvPendingUploadsCount.text = pendingUploadCount.toString()
+                    tvCompletedUploadsCount.text = completedUploadCount.toString()
+
+                    // Update current activity status text
+                    val statusText = when {
+                        pendingMergeCount > 0 -> getString(R.string.status_merging)
+                        pendingUploadCount > 0 -> getString(R.string.status_uploading)
+                        rawCount > 0 -> getString(R.string.status_ingesting)
+                        else -> getString(R.string.status_idle)
+                    }
+                    tvCurrentStatus.text = statusText
                 }
-                .distinctUntilChanged()
-
-            val pendingUploadsFlow = db.dailyMergeDao().getAllMerges()
-                .map { merges ->
-                    merges.count { it.uploadStatus == UploadStatus.IDLE || it.uploadStatus == UploadStatus.UPLOADING || it.uploadStatus == UploadStatus.FAILED }
-                }
-                .distinctUntilChanged()
-
-            val completedUploadsFlow = db.dailyMergeDao().getAllMerges()
-                .map { merges ->
-                    merges.count { it.uploadStatus == UploadStatus.SUCCESS }
-                }
-                .distinctUntilChanged()
-
-            combine(rawClipsFlow, pendingMergesFlow, pendingUploadsFlow, completedUploadsFlow) { raw, pendingM, pendingU, completedU ->
-                listOf(raw, pendingM, pendingU, completedU)
-            }.collect { (rawCount, pendingMergeCount, pendingUploadCount, completedUploadCount) ->
-                tvRawClipsCount.text = rawCount.toString()
-                tvPendingMergesCount.text = pendingMergeCount.toString()
-                tvPendingUploadsCount.text = pendingUploadCount.toString()
-                tvCompletedUploadsCount.text = completedUploadCount.toString()
-
-                // Update current activity status text
-                val statusText = when {
-                    pendingMergeCount > 0 -> getString(R.string.status_merging)
-                    pendingUploadCount > 0 -> getString(R.string.status_uploading)
-                    rawCount > 0 -> getString(R.string.status_ingesting)
-                    else -> getString(R.string.status_idle)
-                }
-                tvCurrentStatus.text = statusText
             }
         }
     }

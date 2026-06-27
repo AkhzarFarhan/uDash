@@ -74,7 +74,9 @@ class YouTubeUploadWorker(
         if (!capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) return false
         val wifiInfo = wifiManager.connectionInfo
         val currentSsid = wifiInfo.ssid?.replace("\"", "") ?: return false
+        if ("<unknown ssid>" == currentSsid) return false
         val homeSsid = config.getHomeWifiSsid(applicationContext)
+        if (homeSsid.isBlank()) return false
         return currentSsid == homeSsid
     }
 

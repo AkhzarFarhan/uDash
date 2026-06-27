@@ -4,7 +4,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.net.wifi.WifiManager
-import android.os.Build
 import com.utility.dashcam.service.DashcamIngestionService
 import com.utility.dashcam.util.ConfigStore
 
@@ -27,14 +26,12 @@ class DashcamConnectionReceiver : BroadcastReceiver() {
         val wifiManager = context.getSystemService(Context.WIFI_SERVICE) as WifiManager
         val info = wifiManager.connectionInfo
         val ssid = info.ssid?.replace("\"", "") ?: return
+        if ("<unknown ssid>" == ssid) return
         val prefix = ConfigStore.getDashcamSsidPrefix(context)
+        if (prefix.isBlank()) return
         if (ssid.startsWith(prefix, ignoreCase = true)) {
             val serviceIntent = Intent(context, DashcamIngestionService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(serviceIntent)
-            } else {
-                context.startService(serviceIntent)
-            }
+            context.startForegroundService(serviceIntent)
         }
     }
 }
