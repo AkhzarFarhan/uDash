@@ -13,6 +13,8 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.utility.dashcam.R
+import com.arthenica.ffmpegkit.FFprobeKit
+import com.arthenica.ffmpegkit.ReturnCode
 import com.utility.dashcam.data.local.AppDatabase
 import com.utility.dashcam.data.local.DownloadStatus
 import com.utility.dashcam.data.local.MergeStatus
@@ -30,6 +32,12 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import androidx.work.Constraints
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.ExistingWorkPolicy
+import com.utility.dashcam.worker.YouTubeUploadWorker
 
 /**
  * Foreground Service for automated raw clip ingestion from DDPAI Dashcam Wi-Fi AP.
@@ -44,10 +52,12 @@ class DashcamIngestionService : Service() {
     private val db by lazy { AppDatabase.getDatabase(this) }
     private val CHANNEL_ID = "dashcam_ingestion_channel"
     private val isIngesting = AtomicBoolean(false)
+    private val isMerging = AtomicBoolean(false)
     private var dashcamOkHttpClient: OkHttpClient? = null
 
     override fun onCreate() {
         super.onCreate()
+        isServiceRunning = true
         connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         wifiManager = getSystemService(Context.WIFI_SERVICE) as WifiManager
         createNotificationChannel()
@@ -59,10 +69,13 @@ class DashcamIngestionService : Service() {
             startForeground(NOTIFICATION_ID, createNotification())
         }
         
-        // Reset stuck processing merges and downloading clips on startup
+        // Reset stuck processing/uploading merges and downloading clips on startup
         serviceScope.launch {
             db.rawClipDao().resetDownloadingClips()
             db.dailyMergeDao().resetProcessingMerges()
+            db.dailyMergeDao().resetUploadingMerges()
+            checkAndTriggerMerge()
+            triggerYoutubeUpload()
         }
 
         setupDashcamNetwork()
@@ -102,6 +115,10 @@ class DashcamIngestionService : Service() {
                 LogStore.log(this@DashcamIngestionService, "Ingestion", "Wi-Fi Network available: $network")
                 if (!isConnectedToDashcamAp()) {
                     LogStore.log(this@DashcamIngestionService, "Ingestion", "SSID prefix mismatch. Ignoring network.")
+                    serviceScope.launch {
+                        checkAndTriggerMerge()
+                        triggerYoutubeUpload()
+                    }
                     return
                 }
                 if (!isIngesting.compareAndSet(false, true)) {
@@ -175,9 +192,9 @@ class DashcamIngestionService : Service() {
                 db.rawClipDao().insertRawClips(clips)
             }
             
-            // Download only PENDING clips
-            val pending = db.rawClipDao().getRawClipsByStatus(DownloadStatus.PENDING)
-            LogStore.log(this, "Ingestion", "Found ${pending.size} pending clips to download.")
+            // Download PENDING and FAILED clips (retrying previously failed ones)
+            val pending = db.rawClipDao().getClipsToDownload()
+            LogStore.log(this, "Ingestion", "Found ${pending.size} pending/failed clips to download.")
             pending.forEachIndexed { index, clip ->
                 downloadClip(client, clip, index + 1, pending.size)
             }
@@ -238,15 +255,27 @@ class DashcamIngestionService : Service() {
                     }
                 }
                 
-                // Verify file was actually written and update database with final path and size
-                if (file.length() > 0L) {
+                // Verify file was actually written, is > 1 MB, and can be successfully parsed by FFprobe (verifies moov atom and readability)
+                var isValid = false
+                if (file.exists() && file.length() > 1 * 1024 * 1024) {
+                    try {
+                        val session = FFprobeKit.execute(file.absolutePath)
+                        if (ReturnCode.isSuccess(session.returnCode)) {
+                            isValid = true
+                        }
+                    } catch (e: Exception) {
+                        LogStore.log(this, "Ingestion", "Failed to probe download file ${clip.fileName}: ${e.message}")
+                    }
+                }
+
+                if (isValid) {
                     db.rawClipDao().markDownloadCompleted(clip.fileName, file.absolutePath, file.length())
                     LogStore.log(this, "Ingestion", "[$currentIdx/$totalIdx] Download complete: ${clip.fileName} (${file.length() / 1024 / 1024} MB)")
                     ConfigStore.setLastError(this, null) // Clear error on success
                 } else {
                     file.delete()
                     db.rawClipDao().markDownloadFailed(clip.fileName)
-                    val errorMsg = "Download error: zero-byte write for ${clip.fileName}"
+                    val errorMsg = "Download error: file ${clip.fileName} is too small, corrupted, or missing a valid moov atom."
                     LogStore.log(this, "Ingestion", errorMsg, isError = true)
                     ConfigStore.setLastError(this, errorMsg)
                 }
@@ -265,80 +294,179 @@ class DashcamIngestionService : Service() {
     }
 
     private suspend fun checkAndTriggerMerge() {
+        LogStore.log(this, "Ingestion", "[Merge Check] checkAndTriggerMerge() invoked.")
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val today = sdf.format(java.util.Date())
+        LogStore.log(this, "Ingestion", "[Merge Check] Current date (today): $today")
+
         val completedDates = db.rawClipDao().getDistinctCompletedDates()
-        
+        LogStore.log(this, "Ingestion", "[Merge Check] Distinct completed dates in DB: $completedDates")
+
         // Block current date, merge closed historical days
         val datesToMerge = completedDates.filter { it != today }
-        LogStore.log(this, "Ingestion", "Completed dates in database: $completedDates. Merge candidates (excluding today): $datesToMerge")
-        if (datesToMerge.isEmpty()) return
+        LogStore.log(this, "Ingestion", "[Merge Check] Dates to merge (excluding today): $datesToMerge")
+
+        if (datesToMerge.isEmpty()) {
+            LogStore.log(this, "Ingestion", "[Merge Check] No merge candidates found. Returning.")
+            return
+        }
+
+        if (!isMerging.compareAndSet(false, true)) {
+            LogStore.log(this, "Ingestion", "[Merge Check] Merging already in progress. Ignoring request.")
+            return
+        }
 
         serviceScope.launch {
-            val orchestrator = FfmpegOrchestrator(this@DashcamIngestionService, db)
-            for (dateStr in datesToMerge) {
-                db.rawClipDao().deleteNonCompletedClipsByDate(dateStr)
+            try {
+                LogStore.log(this@DashcamIngestionService, "Ingestion", "[Merge Check] Started background merge coroutine.")
+                val orchestrator = FfmpegOrchestrator(this@DashcamIngestionService, db)
+                for (dateStr in datesToMerge) {
+                    LogStore.log(this@DashcamIngestionService, "Ingestion", "[Merge Check] Processing date: $dateStr")
 
-                val completedClips = db.rawClipDao().getCompletedClipsByDate(dateStr)
-                if (completedClips.isEmpty()) continue
+                    val countBeforePurge = withTimeout(5000) {
+                        db.rawClipDao().countNonCompletedByDate(dateStr)
+                    }
+                    LogStore.log(this@DashcamIngestionService, "Ingestion", "[Merge Check] Date $dateStr: count of non-completed clips before purge: $countBeforePurge")
 
-                // Group clips chronologically into chunks of max 500 MB
-                val maxChunkSize = 500 * 1024 * 1024L
-                val chunks = mutableListOf<List<RawClipEntity>>()
-                var currentChunk = mutableListOf<RawClipEntity>()
-                var currentSize = 0L
+                    withTimeout(5000) {
+                        db.rawClipDao().deleteNonCompletedClipsByDate(dateStr)
+                    }
+                    LogStore.log(this@DashcamIngestionService, "Ingestion", "[Merge Check] Date $dateStr: non-completed clips purged.")
 
-                completedClips.forEach { clip ->
-                    val size = clip.fileSize
-                    if (currentSize + size > maxChunkSize && currentChunk.isNotEmpty()) {
+                    val completedClips = withTimeout(5000) {
+                        db.rawClipDao().getCompletedClipsByDate(dateStr)
+                    }
+
+                    // Validate physical files on disk to auto-heal corrupted/0-byte/HTML index clips
+                    val validCompletedClips = mutableListOf<RawClipEntity>()
+                    completedClips.forEach { clip ->
+                        val path = clip.localFilePath
+                        val file = if (path != null) File(path) else null
+                        
+                        var isValid = false
+                        if (file != null && file.exists() && file.length() > 1 * 1024 * 1024) { // > 1 MB
+                            try {
+                                val session = FFprobeKit.execute(file.absolutePath)
+                                if (ReturnCode.isSuccess(session.returnCode)) {
+                                    isValid = true
+                                }
+                            } catch (e: Exception) {
+                                LogStore.log(this@DashcamIngestionService, "Ingestion", "[Merge Check] Failed to probe clip ${clip.fileName}: ${e.message}")
+                            }
+                        }
+
+                        if (isValid) {
+                            validCompletedClips.add(clip)
+                        } else {
+                            LogStore.log(this@DashcamIngestionService, "Ingestion", "[Merge Check] Clip ${clip.fileName} is corrupted, too small, or not a valid MP4 (size: ${file?.length() ?: 0} bytes). Resetting status to PENDING.")
+                            runBlocking {
+                                withTimeout(5000) {
+                                    db.rawClipDao().updateDownloadSuccess(clip.fileName, DownloadStatus.PENDING, null, 0L)
+                                }
+                            }
+                            try { file?.delete() } catch (e: Exception) {}
+                        }
+                    }
+
+                    LogStore.log(this@DashcamIngestionService, "Ingestion", "[Merge Check] Date $dateStr: completed clips count: ${completedClips.size}, valid: ${validCompletedClips.size}")
+
+                    if (validCompletedClips.isEmpty()) {
+                        LogStore.log(this@DashcamIngestionService, "Ingestion", "[Merge Check] Date $dateStr: No valid completed clips left. Skipping.")
+                        continue
+                    }
+
+                    // Group clips chronologically into chunks of max 500 MB
+                    val maxChunkSize = 500 * 1024 * 1024L
+                    val chunks = mutableListOf<List<RawClipEntity>>()
+                    var currentChunk = mutableListOf<RawClipEntity>()
+                    var currentSize = 0L
+
+                    validCompletedClips.forEach { clip ->
+                        val size = clip.fileSize
+                        if (currentSize + size > maxChunkSize && currentChunk.isNotEmpty()) {
+                            chunks.add(currentChunk)
+                            currentChunk = mutableListOf()
+                            currentSize = 0L
+                        }
+                        currentChunk.add(clip)
+                        currentSize += size
+                    }
+                    if (currentChunk.isNotEmpty()) {
                         chunks.add(currentChunk)
-                        currentChunk = mutableListOf()
-                        currentSize = 0L
-                    }
-                    currentChunk.add(clip)
-                    currentSize += size
-                }
-                if (currentChunk.isNotEmpty()) {
-                    chunks.add(currentChunk)
-                }
-
-                // Process chunks sequentially
-                chunks.forEachIndexed { index, chunkClips ->
-                    val partNum = index + 1
-                    val mergeId = if (chunks.size == 1) dateStr else "${dateStr}_part$partNum"
-
-                    val merge = db.dailyMergeDao().getDailyMerge(mergeId)
-                    val needsMerge = merge == null || merge.mergeStatus == MergeStatus.PENDING || merge.mergeStatus == MergeStatus.FAILED
-                    if (!needsMerge) return@forEachIndexed
-
-                    if (merge == null) {
-                        db.dailyMergeDao().insertDailyMerge(
-                            com.utility.dashcam.data.local.DailyMergeEntity(
-                                mergeId = mergeId,
-                                dateString = dateStr,
-                                localMergedPath = null,
-                                totalSize = 0L,
-                                mergeStatus = MergeStatus.PROCESSING,
-                                uploadStatus = UploadStatus.IDLE,
-                                youtubeVideoId = null,
-                                lastAttemptTimestamp = 0L
-                            )
-                        )
-                    } else {
-                        db.dailyMergeDao().updateMergeStatus(mergeId, MergeStatus.PROCESSING)
                     }
 
-                    orchestrator.processDailyMerge(mergeId, dateStr, chunkClips)
-                }
+                    LogStore.log(this@DashcamIngestionService, "Ingestion", "[Merge Check] Date $dateStr: Split into ${chunks.size} chunks to merge.")
 
-                // Delete raw database entries if all splits for this date are successfully merged
-                val merges = db.dailyMergeDao().getDailyMergesForDate(dateStr)
-                val allCompleted = merges.isNotEmpty() && merges.all { it.mergeStatus == MergeStatus.COMPLETED }
-                if (allCompleted) {
-                    db.dailyMergeDao().deleteRawClipsByDate(dateStr)
+                    // Process chunks sequentially
+                    chunks.forEachIndexed { index, chunkClips ->
+                        val partNum = index + 1
+                        val mergeId = if (chunks.size == 1) dateStr else "${dateStr}_part$partNum"
+
+                        val merge = withTimeout(5000) {
+                            db.dailyMergeDao().getDailyMerge(mergeId)
+                        }
+                        val needsMerge = merge == null || merge.mergeStatus == MergeStatus.PENDING || merge.mergeStatus == MergeStatus.FAILED
+                        LogStore.log(this@DashcamIngestionService, "Ingestion", "[Merge Check] Merge $mergeId needsMerge: $needsMerge (current DB status: ${merge?.mergeStatus})")
+
+                        if (!needsMerge) return@forEachIndexed
+
+                        if (merge == null) {
+                            LogStore.log(this@DashcamIngestionService, "Ingestion", "[Merge Check] Merge $mergeId not found in DB. Inserting.")
+                            withTimeout(5000) {
+                                db.dailyMergeDao().insertDailyMerge(
+                                    com.utility.dashcam.data.local.DailyMergeEntity(
+                                        mergeId = mergeId,
+                                        dateString = dateStr,
+                                        localMergedPath = null,
+                                        totalSize = 0L,
+                                        mergeStatus = MergeStatus.PROCESSING,
+                                        uploadStatus = UploadStatus.IDLE,
+                                        youtubeVideoId = null,
+                                        lastAttemptTimestamp = 0L
+                                    )
+                                )
+                            }
+                        } else {
+                            LogStore.log(this@DashcamIngestionService, "Ingestion", "[Merge Check] Merge $mergeId found. Updating status to PROCESSING.")
+                            withTimeout(5000) {
+                                db.dailyMergeDao().updateMergeStatus(mergeId, MergeStatus.PROCESSING)
+                            }
+                        }
+
+                        LogStore.log(this@DashcamIngestionService, "Ingestion", "[Merge Check] Invoking FFmpeg orchestrator for $mergeId.")
+                        orchestrator.processDailyMerge(mergeId, dateStr, chunkClips)
+                    }
+
+                    // Delete raw database entries if all splits for this date are successfully merged
+                    val merges = withTimeout(5000) {
+                        db.dailyMergeDao().getDailyMergesForDate(dateStr)
+                    }
+                    val allCompleted = merges.isNotEmpty() && merges.all { it.mergeStatus == MergeStatus.COMPLETED }
+                    LogStore.log(this@DashcamIngestionService, "Ingestion", "[Merge Check] Date $dateStr: allCompleted=$allCompleted (merges size: ${merges.size})")
+                    if (allCompleted) {
+                        // Delete raw files from physical disk only when all merges for this date succeeded!
+                        validCompletedClips.forEach { clip ->
+                            clip.localFilePath?.let { path ->
+                                val file = File(path)
+                                if (file.exists()) {
+                                    file.delete()
+                                }
+                            }
+                        }
+                        withTimeout(5000) {
+                            db.dailyMergeDao().deleteRawClipsByDate(dateStr)
+                        }
+                        LogStore.log(this@DashcamIngestionService, "Ingestion", "[Merge Check] Date $dateStr: Raw clips deleted from database and physical disk.")
+                    }
                 }
+            } catch (e: Exception) {
+                LogStore.log(this@DashcamIngestionService, "Ingestion", "[Merge Check] Exception in merge loop: ${e.message}\n${e.stackTraceToString()}", isError = true)
+            } finally {
+                com.utility.dashcam.util.ConfigStore.setMergingStatus(this@DashcamIngestionService, "Idle")
+                LogStore.log(this@DashcamIngestionService, "Ingestion", "[Merge Check] Finished background merge coroutine.")
+                isMerging.set(false)
+                triggerYoutubeUpload()
             }
-            com.utility.dashcam.util.ConfigStore.setMergingStatus(this@DashcamIngestionService, "Idle")
         }
     }
 
@@ -361,8 +489,26 @@ class DashcamIngestionService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun triggerYoutubeUpload() {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.UNMETERED)
+            .build()
+
+        val uploadWorkRequest = OneTimeWorkRequestBuilder<YouTubeUploadWorker>()
+            .setConstraints(constraints)
+            .build()
+
+        WorkManager.getInstance(applicationContext).enqueueUniqueWork(
+            "youtube_upload_work",
+            ExistingWorkPolicy.REPLACE,
+            uploadWorkRequest
+        )
+        LogStore.log(this, "Ingestion", "YouTube upload worker enqueued.")
+    }
     
     override fun onDestroy() {
+        isServiceRunning = false
         super.onDestroy()
         try { networkCallback?.let { connectivityManager.unregisterNetworkCallback(it) } } catch (e: Exception) {}
         
@@ -375,5 +521,7 @@ class DashcamIngestionService : Service() {
     
     companion object { 
         private const val NOTIFICATION_ID = 1001 
+        @Volatile
+        var isServiceRunning = false
     }
 }

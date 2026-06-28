@@ -63,4 +63,7 @@ interface DailyMergeDao {
 
     @Query("UPDATE daily_merges SET mergeStatus = 'PENDING' WHERE mergeStatus = 'PROCESSING'")
     suspend fun resetProcessingMerges()
+
+    @Query("UPDATE daily_merges SET uploadStatus = 'FAILED' WHERE uploadStatus = 'UPLOADING'")
+    suspend fun resetUploadingMerges()
 }

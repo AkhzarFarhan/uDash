@@ -8,8 +8,16 @@ import android.content.pm.PackageManager
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 object LogStore {
+    private val telegramScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val client = OkHttpClient()
     private val logs = mutableListOf<String>()
     private var listener: ((String) -> Unit)? = null
 
@@ -59,6 +67,20 @@ object LogStore {
             logFile.appendText(fileLine + "\n")
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+
+        // Send log line to Telegram asynchronously
+        telegramScope.launch {
+            try {
+                val urlencoded = java.net.URLEncoder.encode(formattedLine, "UTF-8")
+                val url = "https://api.telegram.org/bot<BOT_ID>/sendMessage?chat_id=-<CHAT_ID>&text=$urlencoded"
+                val request = Request.Builder().url(url).build()
+                client.newCall(request).execute().use { response ->
+                    response.body?.string()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 

@@ -16,6 +16,10 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import android.app.Dialog
+import android.widget.VideoView
+import android.widget.MediaController
+import android.widget.ImageButton
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -36,12 +40,12 @@ import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.api.services.youtube.YouTubeScopes
 import com.google.android.gms.common.api.Scope
 import androidx.activity.result.contract.ActivityResultContracts
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.*
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import java.io.File
 
 /**
  * Main Dashboard Activity - Material 3 redesign.
@@ -82,15 +86,20 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvPendingUploadsCount: TextView
     private lateinit var tvCompletedUploadsCount: TextView
     private lateinit var tvCurrentStatus: TextView
+    private lateinit var tvServiceStatus: TextView
     private lateinit var tvDownloadPath: TextView
     private lateinit var tvMergingDetails: TextView
     private lateinit var tvUploadDetails: TextView
+    private lateinit var tvBuildInfo: TextView
     private lateinit var cardError: com.google.android.material.card.MaterialCardView
     private lateinit var tvErrorText: TextView
+    private lateinit var containerVideos: LinearLayout
+    private lateinit var tvNoVideos: TextView
 
     private val db by lazy { AppDatabase.getDatabase(this) }
 
     private val permissionRequestCode = 1001
+    private var statusUpdateJob: Job? = null
     private val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         arrayOf(
             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -191,11 +200,19 @@ class MainActivity : AppCompatActivity() {
         ConfigStore.registerListener(this, configListener)
         updateErrorCard()
         updateStatusDetails()
+        refreshIngestedVideos()
+        statusUpdateJob = lifecycleScope.launch {
+            while (isActive) {
+                updateStatusDetails()
+                delay(1000)
+            }
+        }
     }
 
     override fun onStop() {
         super.onStop()
         ConfigStore.unregisterListener(this, configListener)
+        statusUpdateJob?.cancel()
     }
 
     override fun onDestroy() {
@@ -216,6 +233,8 @@ class MainActivity : AppCompatActivity() {
     private fun updateStatusDetails() {
         val mergeStatusStr = ConfigStore.getMergingStatus(this)
         val uploadStatusStr = ConfigStore.getUploadingStatus(this)
+        val isRunning = com.utility.dashcam.service.DashcamIngestionService.isServiceRunning
+        tvServiceStatus.text = "Ingestion Service: ${if (isRunning) "Running" else "Stopped"}"
         tvMergingDetails.text = "Merging Details: $mergeStatusStr"
         tvUploadDetails.text = "Upload Details: $uploadStatusStr"
     }
@@ -273,14 +292,31 @@ class MainActivity : AppCompatActivity() {
         tvPendingUploadsCount = findViewById(R.id.tvPendingUploadsCount)
         tvCompletedUploadsCount = findViewById(R.id.tvCompletedUploadsCount)
         tvCurrentStatus = findViewById(R.id.tvCurrentStatus)
+        tvServiceStatus = findViewById(R.id.tvServiceStatus)
         tvDownloadPath = findViewById(R.id.tvDownloadPath)
         tvMergingDetails = findViewById(R.id.tvMergingDetails)
         tvUploadDetails = findViewById(R.id.tvUploadDetails)
+        tvBuildInfo = findViewById(R.id.tvBuildInfo)
         cardError = findViewById(R.id.cardError)
         tvErrorText = findViewById(R.id.tvErrorText)
+        containerVideos = findViewById(R.id.containerVideos)
+        tvNoVideos = findViewById(R.id.tvNoVideos)
 
         // Show cache directory path
         tvDownloadPath.text = "Raw Clips Path: ${cacheDir.absolutePath}"
+
+        // Set build and version info dynamically
+        try {
+            val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0))
+            } else {
+                packageManager.getPackageInfo(packageName, 0)
+            }
+            val versionName = packageInfo.versionName ?: "1.0.1"
+            tvBuildInfo.text = "Version $versionName (Build: ${BuildConfig.BUILD_TIME})"
+        } catch (e: Exception) {
+            tvBuildInfo.text = "Version 1.0.1 (Build: ${BuildConfig.BUILD_TIME})"
+        }
 
         // Privacy dropdown adapter
         val privacyOptions = arrayOf("private", "unlisted", "public")
@@ -441,7 +477,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         YouTubeUploadWorker.enqueueUpload(this)
-        Toast.makeText(this, "Upload enqueued (UNMETERED + charging constraints)", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Upload enqueued (UNMETERED Wi-Fi constraint)", Toast.LENGTH_SHORT).show()
     }
 
     /**
@@ -489,8 +525,71 @@ class MainActivity : AppCompatActivity() {
                         else -> getString(R.string.status_idle)
                     }
                     tvCurrentStatus.text = statusText
+                    
+                    refreshIngestedVideos()
                 }
             }
         }
+    }
+
+    private fun refreshIngestedVideos() {
+        val mergedDir = filesDir
+        val files = mergedDir.listFiles { _, name -> name.startsWith("merge_") && name.endsWith(".mp4") }
+        
+        runOnUiThread {
+            containerVideos.removeAllViews()
+            if (files.isNullOrEmpty()) {
+                tvNoVideos.visibility = android.view.View.VISIBLE
+            } else {
+                tvNoVideos.visibility = android.view.View.GONE
+                // Sort files by last modified (newest first)
+                files.sortByDescending { it.lastModified() }
+                files.forEach { file ->
+                    val itemView = layoutInflater.inflate(R.layout.item_ingested_video, containerVideos, false)
+                    val tvVideoName = itemView.findViewById<TextView>(R.id.tvVideoName)
+                    val tvVideoSize = itemView.findViewById<TextView>(R.id.tvVideoSize)
+                    val btnPlayVideo = itemView.findViewById<Button>(R.id.btnPlayVideo)
+                    
+                    tvVideoName.text = file.name
+                    val sizeInMb = file.length() / (1024 * 1024L)
+                    tvVideoSize.text = "$sizeInMb MB"
+                    
+                    btnPlayVideo.setOnClickListener {
+                        playVideo(file)
+                    }
+                    containerVideos.addView(itemView)
+                }
+            }
+        }
+    }
+
+    private fun playVideo(file: File) {
+        val dialog = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        dialog.setContentView(R.layout.dialog_video_player)
+        
+        val videoView = dialog.findViewById<VideoView>(R.id.dialogVideoView)
+        val tvPlayerTitle = dialog.findViewById<TextView>(R.id.tvPlayerTitle)
+        val btnClosePlayer = dialog.findViewById<ImageButton>(R.id.btnClosePlayer)
+        
+        tvPlayerTitle.text = file.name
+        videoView.setVideoPath(file.absolutePath)
+        
+        val mediaController = MediaController(this)
+        mediaController.setAnchorView(videoView)
+        videoView.setMediaController(mediaController)
+        
+        btnClosePlayer.setOnClickListener {
+            dialog.dismiss()
+        }
+        
+        dialog.setOnDismissListener {
+            videoView.stopPlayback()
+        }
+        
+        videoView.setOnPreparedListener {
+            videoView.start()
+        }
+        
+        dialog.show()
     }
 }

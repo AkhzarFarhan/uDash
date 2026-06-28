@@ -9,6 +9,7 @@ import com.utility.dashcam.util.LogStore
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.NonCancellable
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -26,7 +27,7 @@ class FfmpegOrchestrator(
       * Process daily merge for a given mergeId and its completed clips.
       * Returns when the FFmpeg operation completes (success or failure).
       */
-    suspend fun processDailyMerge(mergeId: String, dateStr: String, clips: List<RawClipEntity>) = withContext(Dispatchers.IO) {
+    suspend fun processDailyMerge(mergeId: String, dateStr: String, clips: List<RawClipEntity>) = withContext(Dispatchers.IO + NonCancellable) {
         LogStore.log(context, "FFmpeg", "Starting daily merge $mergeId for date $dateStr (${clips.size} clips)")
         com.utility.dashcam.util.ConfigStore.setMergingStatus(context, "Merging $mergeId (${clips.size} clips)")
         // 1. Generate Manifest (filelist.txt) with absolute paths
@@ -39,18 +40,20 @@ class FfmpegOrchestrator(
                 }
             }
         }
+        val manifestContent = manifestFile.readText()
+        LogStore.log(context, "FFmpeg", "Generated manifest for $mergeId:\n$manifestContent")
 
         // 2. Prepare Output file in filesDir
         val outputFile = File(context.filesDir, "merge_$mergeId.mp4")
 
-        // 3. Execute FFmpeg Command (stream-copy concat)
-        val cmd = "-f concat -safe 0 -i ${manifestFile.absolutePath} -c copy -y ${outputFile.absolutePath}"
+        // 3. Execute FFmpeg Command (stream-copy concat) using array args to prevent path-parsing errors
+        val args = arrayOf("-f", "concat", "-safe", "0", "-i", manifestFile.absolutePath, "-c", "copy", "-y", outputFile.absolutePath)
 
         var errorMsg = ""
         // Bridge callback to coroutine using CompletableDeferred
         val deferred = CompletableDeferred<Boolean>()
 
-        FFmpegKit.executeAsync(cmd) { session ->
+        FFmpegKit.executeWithArgumentsAsync(args) { session ->
             val returnCode = session.returnCode
             if (ReturnCode.isSuccess(returnCode)) {
                 deferred.complete(true)
@@ -65,19 +68,10 @@ class FfmpegOrchestrator(
 
         val success = deferred.await()
 
-        // 4. Clean up raw files and save state in Room DB
+        // 4. Save state in Room DB (deleting raw physical files is delegated to the parent service after all splits succeed)
         if (success) {
             LogStore.log(context, "FFmpeg", "Merge $mergeId completed successfully. File size: ${outputFile.length() / 1024 / 1024} MB")
             com.utility.dashcam.util.ConfigStore.setMergingStatus(context, "Completed $mergeId successfully (${outputFile.length() / 1024 / 1024} MB)")
-            // Delete raw local cached files to prevent storage leak
-            clips.forEach { clip ->
-                clip.localFilePath?.let { path ->
-                    val file = File(path)
-                    if (file.exists()) {
-                        file.delete()
-                    }
-                }
-            }
             database.dailyMergeDao().completeMergeAndPurgeRaw(
                 mergeId = mergeId,
                 dateString = dateStr,

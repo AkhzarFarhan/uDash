@@ -78,6 +78,7 @@ class YouTubeUploadWorker(
             return@withContext Result.retry()
         }
         
+        db.dailyMergeDao().resetUploadingMerges()
         val pendingUploads = db.dailyMergeDao().getPendingUploads()
         if (pendingUploads.isEmpty()) {
             LogStore.log(applicationContext, "YouTube", "No pending video uploads found.")
@@ -154,11 +155,33 @@ class YouTubeUploadWorker(
         var currentSsid = wifiInfo?.ssid?.replace("\"", "")
         
         if (currentSsid == null || currentSsid == "<unknown ssid>" || currentSsid.isBlank()) {
+            LogStore.log(applicationContext, "YouTube", "SSID is unknown (likely missing location permission). Checking DHCP gateway to ensure we are not on Dashcam AP.")
             val legacyWifiInfo = wifiManager.connectionInfo
             currentSsid = legacyWifiInfo?.ssid?.replace("\"", "")
         }
         
-        if (currentSsid == null || currentSsid == "<unknown ssid>" || currentSsid.isBlank()) return false
+        if (currentSsid == null || currentSsid == "<unknown ssid>" || currentSsid.isBlank()) {
+            // Fallback to zero-permission gateway check: verify we are on an internet-enabled Wi-Fi but NOT the dashcam network
+            val dhcpInfo = wifiManager.dhcpInfo
+            val gatewayIp = dhcpInfo?.gateway?.let { ipInt ->
+                val ip = String.format(
+                    java.util.Locale.US,
+                    "%d.%d.%d.%d",
+                    ipInt and 0xff,
+                    (ipInt shr 8) and 0xff,
+                    (ipInt shr 16) and 0xff,
+                    (ipInt shr 24) and 0xff
+                )
+                ip
+            } ?: ""
+            if (gatewayIp == "193.168.0.1") {
+                LogStore.log(applicationContext, "YouTube", "Connected to Dashcam AP (193.168.0.1). Upload deferred.")
+                return false
+            }
+            LogStore.log(applicationContext, "YouTube", "SSID unresolved, but gateway ($gatewayIp) is not dashcam. Allowing upload on unmetered Wi-Fi.")
+            return true
+        }
+        
         val homeSsid = config.getHomeWifiSsid(applicationContext)
         if (homeSsid.isBlank()) return false
         return currentSsid == homeSsid

@@ -177,6 +177,16 @@
                     android:layout_marginTop="4dp">
 
                     <TextView
+                        android:id="@+id/tvServiceStatus"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="13sp"
+                        android:textStyle="bold"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:text="Ingestion Service: Stopped"
+                        android:layout_marginBottom="4dp" />
+
+                    <TextView
                         android:id="@+id/tvDownloadPath"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
@@ -235,6 +245,7 @@
                             android:layout_height="wrap_content"
                             android:textColor="#B00020"
                             android:textSize="12sp"
+                            android:textIsSelectable="true"
                             android:text="No errors logged"/>
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
@@ -270,6 +281,49 @@
                         android:text="@string/btn_enqueue_upload" />
 
                 </LinearLayout>
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Section: Ingested Videos -->
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.Material3.CardView.Filled"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="4dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Ingested Videos"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="8dp"
+                    android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+                <TextView
+                    android:id="@+id/tvNoVideos"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="No completed daily merges found on disk."
+                    android:textSize="14sp"
+                    android:textColor="?android:attr/textColorSecondary"
+                    android:gravity="center"
+                    android:padding="16dp" />
+
+                <LinearLayout
+                    android:id="@+id/containerVideos"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
 
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
@@ -407,6 +461,7 @@
                         android:textColor="#00FF00"
                         android:fontFamily="monospace"
                         android:textSize="11sp"
+                        android:textIsSelectable="true"
                         android:text="" />
                 </ScrollView>
             </LinearLayout>
@@ -549,6 +604,18 @@
                 </LinearLayout>
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
+
+        <!-- Version & Build Info -->
+        <TextView
+            android:id="@+id/tvBuildInfo"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:layout_marginBottom="24dp"
+            android:layout_gravity="center_horizontal"
+            android:textColor="?android:attr/textColorSecondary"
+            android:textSize="11sp"
+            android:text="Version 1.0.0 (Build: 2026-06-28 17:36)" />
 
     </LinearLayout>
 </ScrollView>

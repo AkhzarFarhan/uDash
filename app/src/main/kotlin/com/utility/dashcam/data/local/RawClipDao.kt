@@ -22,6 +22,9 @@ interface RawClipDao {
     @Query("SELECT * FROM raw_clips WHERE downloadStatus = :status")
     suspend fun getRawClipsByStatus(status: String): List<RawClipEntity>
 
+    @Query("SELECT * FROM raw_clips WHERE downloadStatus IN ('PENDING', 'FAILED')")
+    suspend fun getClipsToDownload(): List<RawClipEntity>
+
     @Query("SELECT * FROM raw_clips WHERE downloadStatus = :status")
     fun getRawClipsByStatusFlow(status: String): Flow<List<RawClipEntity>>
 

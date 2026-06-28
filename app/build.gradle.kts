@@ -1,4 +1,6 @@
 import java.util.Properties
+import java.util.Date
+import java.text.SimpleDateFormat
 
 plugins {
     id("com.android.application")
@@ -15,7 +17,10 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 1
-        versionName = "1.0"
+        versionName = "1.0.1"
+
+        val currentBuildTime = SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date())
+        buildConfigField("String", "BUILD_TIME", "\"$currentBuildTime\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
