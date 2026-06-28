@@ -5,6 +5,7 @@ import com.arthenica.ffmpegkit.FFmpegKit
 import com.arthenica.ffmpegkit.ReturnCode
 import com.utility.dashcam.data.local.AppDatabase
 import com.utility.dashcam.data.local.RawClipEntity
+import com.utility.dashcam.util.LogStore
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -22,10 +23,12 @@ class FfmpegOrchestrator(
 ) {
 
     /**
-     * Process daily merge for a given mergeId and its completed clips.
-     * Returns when the FFmpeg operation completes (success or failure).
-     */
+      * Process daily merge for a given mergeId and its completed clips.
+      * Returns when the FFmpeg operation completes (success or failure).
+      */
     suspend fun processDailyMerge(mergeId: String, dateStr: String, clips: List<RawClipEntity>) = withContext(Dispatchers.IO) {
+        LogStore.log(context, "FFmpeg", "Starting daily merge $mergeId for date $dateStr (${clips.size} clips)")
+        com.utility.dashcam.util.ConfigStore.setMergingStatus(context, "Merging $mergeId (${clips.size} clips)")
         // 1. Generate Manifest (filelist.txt) with absolute paths
         val manifestFile = File(context.cacheDir, "manifest_$mergeId.txt")
         manifestFile.bufferedWriter().use { writer ->
@@ -64,6 +67,8 @@ class FfmpegOrchestrator(
 
         // 4. Clean up raw files and save state in Room DB
         if (success) {
+            LogStore.log(context, "FFmpeg", "Merge $mergeId completed successfully. File size: ${outputFile.length() / 1024 / 1024} MB")
+            com.utility.dashcam.util.ConfigStore.setMergingStatus(context, "Completed $mergeId successfully (${outputFile.length() / 1024 / 1024} MB)")
             // Delete raw local cached files to prevent storage leak
             clips.forEach { clip ->
                 clip.localFilePath?.let { path ->
@@ -81,6 +86,8 @@ class FfmpegOrchestrator(
             )
             com.utility.dashcam.util.ConfigStore.setLastError(context, null) // Clear error on success
         } else {
+            LogStore.log(context, "FFmpeg", "Merge $mergeId failed: $errorMsg", isError = true)
+            com.utility.dashcam.util.ConfigStore.setMergingStatus(context, "Failed $mergeId: $errorMsg")
             database.dailyMergeDao().markMergeFailed(mergeId)
             com.utility.dashcam.util.ConfigStore.setLastError(context, "Merge $mergeId failed: $errorMsg")
         }

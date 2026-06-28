@@ -14,7 +14,7 @@ interface DailyMergeDao {
     @Query("SELECT * FROM daily_merges WHERE dateString = :dateString")
     suspend fun getDailyMergesForDate(dateString: String): List<DailyMergeEntity>
 
-    @Query("SELECT * FROM daily_merges WHERE uploadStatus IN ('IDLE', 'FAILED')")
+    @Query("SELECT * FROM daily_merges WHERE uploadStatus IN ('IDLE', 'FAILED') AND mergeStatus = 'COMPLETED' AND localMergedPath IS NOT NULL")
     suspend fun getPendingUploads(): List<DailyMergeEntity>
 
     @Query("SELECT * FROM daily_merges ORDER BY dateString DESC")

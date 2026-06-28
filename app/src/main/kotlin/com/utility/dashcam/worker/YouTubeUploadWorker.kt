@@ -18,6 +18,7 @@ import androidx.work.OneTimeWorkRequest
 import androidx.work.WorkManager
 import androidx.work.ForegroundInfo
 import com.google.api.client.googleapis.auth.oauth2.GoogleCredential
+import com.google.api.client.googleapis.media.MediaHttpUploader
 import com.google.api.client.http.InputStreamContent
 import com.google.api.client.http.javanet.NetHttpTransport
 import com.google.api.client.json.gson.GsonFactory
@@ -27,6 +28,7 @@ import com.google.api.services.youtube.model.VideoStatus
 import com.utility.dashcam.data.local.AppDatabase
 import com.utility.dashcam.data.local.UploadStatus
 import com.utility.dashcam.util.ConfigStore
+import com.utility.dashcam.util.LogStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedInputStream
@@ -62,6 +64,7 @@ class YouTubeUploadWorker(
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        LogStore.log(applicationContext, "YouTube", "YouTube upload worker started.")
         try {
             // Set to foreground to allow SSID reading and run long-running uploads
             setForeground(getForegroundInfo())
@@ -69,20 +72,43 @@ class YouTubeUploadWorker(
             e.printStackTrace()
         }
 
-        if (!isHomeWifiAndUnmetered()) return@withContext Result.retry()
-        val pendingUploads = db.dailyMergeDao().getPendingUploads()
-        if (pendingUploads.isEmpty()) return@withContext Result.success()
-        val youtube = buildYouTubeClient()
-        if (youtube == null) {
-            config.setLastError(applicationContext, "YouTube Connection Error: Check dashboard OAuth credentials")
+        if (!isHomeWifiAndUnmetered()) {
+            val homeSsid = config.getHomeWifiSsid(applicationContext)
+            LogStore.log(applicationContext, "YouTube", "Upload worker deferred: Not connected to home Wi-Fi ($homeSsid) or connection is metered.")
             return@withContext Result.retry()
         }
         
-        pendingUploads.forEach { merge ->
-            merge.localMergedPath?.let { filePath ->
-                upload(youtube, merge.mergeId, merge.dateString, filePath)
-            }
+        val pendingUploads = db.dailyMergeDao().getPendingUploads()
+        if (pendingUploads.isEmpty()) {
+            LogStore.log(applicationContext, "YouTube", "No pending video uploads found.")
+            config.setUploadingStatus(applicationContext, "Idle")
+            return@withContext Result.success()
         }
+        
+        LogStore.log(applicationContext, "YouTube", "Found ${pendingUploads.size} daily compilations to upload.")
+        val youtube = buildYouTubeClient()
+        if (youtube == null) {
+            val errorMsg = "YouTube Client failed to build: Check client ID, secret, and refresh token."
+            LogStore.log(applicationContext, "YouTube", errorMsg, isError = true)
+            config.setLastError(applicationContext, errorMsg)
+            return@withContext Result.retry()
+        }
+        
+        pendingUploads.forEachIndexed { index, merge ->
+            val filePath = merge.localMergedPath
+            if (filePath.isNullOrBlank()) {
+                LogStore.log(applicationContext, "YouTube", "Skipping upload for ${merge.mergeId}: Merged file path is null/empty (Merge status: ${merge.mergeStatus}).", isError = true)
+                return@forEachIndexed
+            }
+            val file = File(filePath)
+            if (!file.exists()) {
+                LogStore.log(applicationContext, "YouTube", "Skipping upload for ${merge.mergeId}: Merged file does not exist at $filePath.", isError = true)
+                return@forEachIndexed
+            }
+            LogStore.log(applicationContext, "YouTube", "[${index + 1}/${pendingUploads.size}] Uploading daily backup: ${merge.dateString} (Part: ${merge.mergeId})")
+            upload(youtube, merge.mergeId, merge.dateString, filePath)
+        }
+        config.setUploadingStatus(applicationContext, "Idle")
         Result.success()
     }
 
@@ -158,6 +184,7 @@ class YouTubeUploadWorker(
 
     private suspend fun upload(youtube: YouTube, mergeId: String, dateStr: String, filePath: String) {
         db.dailyMergeDao().updateUploadStatus(mergeId, UploadStatus.UPLOADING, null, System.currentTimeMillis())
+        config.setUploadingStatus(applicationContext, "Uploading $mergeId (0%)")
         val video = Video().apply {
             status = VideoStatus().apply { privacyStatus = config.getYoutubePrivacy(applicationContext) }
             snippet = com.google.api.services.youtube.model.VideoSnippet().apply {
@@ -171,21 +198,55 @@ class YouTubeUploadWorker(
         val uploader = insertRequest.mediaHttpUploader
         uploader.isDirectUploadEnabled = false
         uploader.chunkSize = CHUNK_SIZE
+
+        var lastReportTime = 0L
+        uploader.setProgressListener { progress ->
+            when (progress.uploadState) {
+                MediaHttpUploader.UploadState.MEDIA_IN_PROGRESS -> {
+                    val now = System.currentTimeMillis()
+                    if (now - lastReportTime > 1500) { // Report progress every 1.5 seconds
+                        val pct = (progress.numBytesUploaded * 100) / file.length()
+                        LogStore.log(applicationContext, "YouTube", "Uploading $mergeId: $pct% (${progress.numBytesUploaded / 1024 / 1024}MB/${file.length() / 1024 / 1024}MB)")
+                        config.setUploadingStatus(applicationContext, "Uploading $mergeId: $pct% (${progress.numBytesUploaded / 1024 / 1024}MB/${file.length() / 1024 / 1024}MB)")
+                        lastReportTime = now
+                    }
+                }
+                MediaHttpUploader.UploadState.MEDIA_COMPLETE -> {
+                    LogStore.log(applicationContext, "YouTube", "Upload complete for $mergeId. Processing...")
+                    config.setUploadingStatus(applicationContext, "Processing $mergeId on YouTube...")
+                }
+                else -> {}
+            }
+        }
+
         try {
             val response = insertRequest.execute()
             if (response.id != null) {
+                LogStore.log(applicationContext, "YouTube", "Successfully backed up video $mergeId to YouTube. Video ID: ${response.id}")
+                config.setUploadingStatus(applicationContext, "Success: $mergeId (Video ID: ${response.id})")
                 db.dailyMergeDao().updateUploadStatus(mergeId, UploadStatus.SUCCESS, response.id, System.currentTimeMillis())
                 db.dailyMergeDao().clearLocalMergedPath(mergeId)
-                file.delete()
+                
+                // Storage purging
+                val sizeMB = file.length() / 1024 / 1024
+                if (file.delete()) {
+                    LogStore.log(applicationContext, "YouTube", "Deleted local merged file $mergeId ($sizeMB MB) to free space.")
+                }
                 config.setLastError(applicationContext, null) // Clear error on success
             } else {
+                val errorMsg = "Upload failed for $mergeId: Empty video ID returned from Google API."
+                LogStore.log(applicationContext, "YouTube", errorMsg, isError = true)
+                config.setUploadingStatus(applicationContext, "Failed: Empty video ID")
                 db.dailyMergeDao().updateUploadStatus(mergeId, UploadStatus.FAILED, null, System.currentTimeMillis())
-                config.setLastError(applicationContext, "Upload failed for $mergeId: empty video ID returned")
+                config.setLastError(applicationContext, errorMsg)
             }
         } catch (e: Exception) {
             e.printStackTrace()
+            val errorMsg = "Upload failed for $mergeId: ${e.message}"
+            LogStore.log(applicationContext, "YouTube", errorMsg, isError = true)
+            config.setUploadingStatus(applicationContext, "Failed: ${e.message}")
             db.dailyMergeDao().updateUploadStatus(mergeId, UploadStatus.FAILED, null, System.currentTimeMillis())
-            config.setLastError(applicationContext, "Upload failed for $mergeId: ${e.message}")
+            config.setLastError(applicationContext, errorMsg)
         }
     }
 }

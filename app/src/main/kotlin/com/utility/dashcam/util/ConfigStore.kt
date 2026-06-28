@@ -165,6 +165,25 @@ object ConfigStore {
         init(context).edit().putString(KEY_LAST_ERROR, error).apply()
     }
 
+    private const val KEY_MERGING_STATUS = "merging_status"
+    private const val KEY_UPLOADING_STATUS = "uploading_status"
+
+    fun getMergingStatus(context: Context): String {
+        return init(context).getString(KEY_MERGING_STATUS, "Idle") ?: "Idle"
+    }
+
+    fun setMergingStatus(context: Context, status: String?) {
+        init(context).edit().putString(KEY_MERGING_STATUS, status ?: "Idle").apply()
+    }
+
+    fun getUploadingStatus(context: Context): String {
+        return init(context).getString(KEY_UPLOADING_STATUS, "Idle") ?: "Idle"
+    }
+
+    fun setUploadingStatus(context: Context, status: String?) {
+        init(context).edit().putString(KEY_UPLOADING_STATUS, status ?: "Idle").apply()
+    }
+
     fun registerListener(context: Context, listener: android.content.SharedPreferences.OnSharedPreferenceChangeListener) {
         init(context).registerOnSharedPreferenceChangeListener(listener)
     }

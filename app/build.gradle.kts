@@ -106,6 +106,8 @@ dependencies {
 
     // Video Processing
     implementation("io.github.trongnhan136:ffmpeg-kit-min-gpl:7.1.5")
+    implementation("com.arthenica:smart-exception-common:0.2.1")
+    implementation("com.arthenica:smart-exception-java:0.2.1")
 
     // Network & Authentication
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

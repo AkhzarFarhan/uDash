@@ -3,8 +3,11 @@ package com.utility.dashcam
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.Settings
 import android.widget.ArrayAdapter
 import android.widget.AutoCompleteTextView
 import android.widget.Button
@@ -72,10 +75,16 @@ class MainActivity : AppCompatActivity() {
 
     // Status displays
     private lateinit var tvRawClipsCount: TextView
+    private lateinit var tvLogConsole: TextView
+    private lateinit var btnClearLogs: Button
+    private lateinit var scrollLogConsole: android.widget.ScrollView
     private lateinit var tvPendingMergesCount: TextView
     private lateinit var tvPendingUploadsCount: TextView
     private lateinit var tvCompletedUploadsCount: TextView
     private lateinit var tvCurrentStatus: TextView
+    private lateinit var tvDownloadPath: TextView
+    private lateinit var tvMergingDetails: TextView
+    private lateinit var tvUploadDetails: TextView
     private lateinit var cardError: com.google.android.material.card.MaterialCardView
     private lateinit var tvErrorText: TextView
 
@@ -87,8 +96,13 @@ class MainActivity : AppCompatActivity() {
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.POST_NOTIFICATIONS
         )
-    } else {
+    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+    } else {
+        arrayOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.WRITE_EXTERNAL_STORAGE
+        )
     }
 
     private val googleSignInLauncher = registerForActivityResult(
@@ -125,16 +139,49 @@ class MainActivity : AppCompatActivity() {
         ConfigStore.initWith(this)
 
         requestPermissionsIfNeeded()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!Environment.isExternalStorageManager()) {
+                try {
+                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
+                    startActivity(intent)
+                    Toast.makeText(this, "Please grant All Files Access to write logs to your Download folder", Toast.LENGTH_LONG).show()
+                } catch (e: Exception) {
+                    try {
+                        val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                        startActivity(intent)
+                    } catch (ex: Exception) {
+                        ex.printStackTrace()
+                    }
+                }
+            }
+        }
         initViews()
         loadCurrentConfig()
         setupListeners()
         observePipelineStatus()
+
+        // Load persisted logs and register LogStore listener
+        tvLogConsole.text = com.utility.dashcam.util.LogStore.loadLogs(this)
+        scrollLogConsole.post {
+            scrollLogConsole.fullScroll(android.view.View.FOCUS_DOWN)
+        }
+        com.utility.dashcam.util.LogStore.setListener { logs ->
+            runOnUiThread {
+                tvLogConsole.text = logs
+                scrollLogConsole.post {
+                    scrollLogConsole.fullScroll(android.view.View.FOCUS_DOWN)
+                }
+            }
+        }
     }
 
     private val configListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == "last_error") {
+        if (key == "last_error" || key == "merging_status" || key == "uploading_status") {
             runOnUiThread {
                 updateErrorCard()
+                updateStatusDetails()
             }
         }
     }
@@ -143,11 +190,17 @@ class MainActivity : AppCompatActivity() {
         super.onStart()
         ConfigStore.registerListener(this, configListener)
         updateErrorCard()
+        updateStatusDetails()
     }
 
     override fun onStop() {
         super.onStop()
         ConfigStore.unregisterListener(this, configListener)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        com.utility.dashcam.util.LogStore.setListener(null)
     }
 
     private fun updateErrorCard() {
@@ -158,6 +211,13 @@ class MainActivity : AppCompatActivity() {
         } else {
             cardError.visibility = android.view.View.GONE
         }
+    }
+
+    private fun updateStatusDetails() {
+        val mergeStatusStr = ConfigStore.getMergingStatus(this)
+        val uploadStatusStr = ConfigStore.getUploadingStatus(this)
+        tvMergingDetails.text = "Merging Details: $mergeStatusStr"
+        tvUploadDetails.text = "Upload Details: $uploadStatusStr"
     }
 
     private fun requestPermissionsIfNeeded() {
@@ -196,6 +256,10 @@ class MainActivity : AppCompatActivity() {
         layoutYoutubeContent = findViewById(R.id.layoutYoutubeContent)
         ivYoutubeExpandArrow = findViewById(R.id.ivYoutubeExpandArrow)
 
+        tvLogConsole = findViewById(R.id.tvLogConsole)
+        btnClearLogs = findViewById(R.id.btnClearLogs)
+        scrollLogConsole = findViewById(R.id.scrollLogConsole)
+
         btnConnectYoutube = findViewById(R.id.btnConnectYoutube)
         tvYoutubeStatus = findViewById(R.id.tvYoutubeStatus)
 
@@ -209,8 +273,14 @@ class MainActivity : AppCompatActivity() {
         tvPendingUploadsCount = findViewById(R.id.tvPendingUploadsCount)
         tvCompletedUploadsCount = findViewById(R.id.tvCompletedUploadsCount)
         tvCurrentStatus = findViewById(R.id.tvCurrentStatus)
+        tvDownloadPath = findViewById(R.id.tvDownloadPath)
+        tvMergingDetails = findViewById(R.id.tvMergingDetails)
+        tvUploadDetails = findViewById(R.id.tvUploadDetails)
         cardError = findViewById(R.id.cardError)
         tvErrorText = findViewById(R.id.tvErrorText)
+
+        // Show cache directory path
+        tvDownloadPath.text = "Raw Clips Path: ${cacheDir.absolutePath}"
 
         // Privacy dropdown adapter
         val privacyOptions = arrayOf("private", "unlisted", "public")
@@ -240,6 +310,16 @@ class MainActivity : AppCompatActivity() {
                 layoutYoutubeContent.visibility = android.view.View.VISIBLE
                 ivYoutubeExpandArrow.setImageResource(android.R.drawable.arrow_up_float)
             }
+        }
+
+        btnClearLogs.setOnClickListener {
+            com.utility.dashcam.util.LogStore.clear(this)
+        }
+
+        // Allow inner ScrollView for log console to scroll correctly inside outer ScrollView
+        scrollLogConsole.setOnTouchListener { v, event ->
+            v.parent.requestDisallowInterceptTouchEvent(true)
+            false
         }
 
         btnSaveConfig.setOnClickListener { saveConfig() }

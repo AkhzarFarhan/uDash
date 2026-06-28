@@ -161,9 +161,49 @@
                     android:textStyle="bold"
                     android:padding="12dp"
                     android:background="?attr/colorSurfaceContainerHighest"
-                    android:layout_marginBottom="16dp"
+                    android:layout_marginBottom="12dp"
                     android:layout_marginHorizontal="8dp"
                     android:layout_marginTop="8dp" />
+
+                <!-- Pipeline Detail Info (Download path, merging details, upload details) -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="12dp"
+                    android:background="?attr/colorSurfaceContainerLow"
+                    android:layout_marginBottom="16dp"
+                    android:layout_marginHorizontal="8dp"
+                    android:layout_marginTop="4dp">
+
+                    <TextView
+                        android:id="@+id/tvDownloadPath"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="13sp"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:text="Raw Clips Path: /data/user/0/com.utility.dashcam/cache"
+                        android:layout_marginBottom="4dp" />
+
+                    <TextView
+                        android:id="@+id/tvMergingDetails"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="13sp"
+                        android:textStyle="bold"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:text="Merging Details: Idle"
+                        android:layout_marginBottom="4dp" />
+
+                    <TextView
+                        android:id="@+id/tvUploadDetails"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="13sp"
+                        android:textStyle="bold"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:text="Upload Details: Idle" />
+                </LinearLayout>
 
                 <!-- Error Card (visible only when there is an error) -->
                 <com.google.android.material.card.MaterialCardView
@@ -310,6 +350,65 @@
                     android:layout_marginTop="8dp"
                     android:text="@string/btn_save" />
 
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Section: Console Logs -->
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.Material3.CardView.Filled"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="4dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="8dp">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Console Logs"
+                        android:textSize="18sp"
+                        android:textStyle="bold"
+                        android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+                    <Button
+                        android:id="@+id/btnClearLogs"
+                        style="@style/Widget.Material3.Button.TextButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Clear" />
+                </LinearLayout>
+
+                <ScrollView
+                    android:id="@+id/scrollLogConsole"
+                    android:layout_width="match_parent"
+                    android:layout_height="200dp"
+                    android:background="#1E1E1E"
+                    android:nestedScrollingEnabled="true"
+                    android:padding="8dp">
+
+                    <TextView
+                        android:id="@+id/tvLogConsole"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textColor="#00FF00"
+                        android:fontFamily="monospace"
+                        android:textSize="11sp"
+                        android:text="" />
+                </ScrollView>
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
