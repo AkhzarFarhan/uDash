@@ -35,7 +35,7 @@ import java.io.FileInputStream
 
 /**
  * Foreground CoroutineWorker for uploading daily video merges to YouTube.
- * Constrained to run on unmetered Wi-Fi and when device is charging.
+ * Constrained to run on unmetered Wi-Fi.
  */
 class YouTubeUploadWorker(
     context: Context,
@@ -52,7 +52,6 @@ class YouTubeUploadWorker(
         fun enqueueUpload(context: Context) {
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.UNMETERED)
-                .setRequiresCharging(true)
                 .build()
             val request = OneTimeWorkRequest.Builder(YouTubeUploadWorker::class.java)
                 .setConstraints(constraints)

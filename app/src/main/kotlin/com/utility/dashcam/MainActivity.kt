@@ -9,6 +9,8 @@ import android.widget.ArrayAdapter
 import android.widget.AutoCompleteTextView
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -58,6 +60,9 @@ class MainActivity : AppCompatActivity() {
     // Connect YouTube (in-app OAuth)
     private lateinit var btnConnectYoutube: Button
     private lateinit var tvYoutubeStatus: TextView
+    private lateinit var layoutYoutubeHeader: LinearLayout
+    private lateinit var layoutYoutubeContent: LinearLayout
+    private lateinit var ivYoutubeExpandArrow: ImageView
 
     // Action buttons
     private lateinit var btnSaveConfig: Button
@@ -187,6 +192,10 @@ class MainActivity : AppCompatActivity() {
         etClientSecret = findViewById(R.id.etClientSecret)
         etRefreshToken = findViewById(R.id.etRefreshToken)
 
+        layoutYoutubeHeader = findViewById(R.id.layoutYoutubeHeader)
+        layoutYoutubeContent = findViewById(R.id.layoutYoutubeContent)
+        ivYoutubeExpandArrow = findViewById(R.id.ivYoutubeExpandArrow)
+
         btnConnectYoutube = findViewById(R.id.btnConnectYoutube)
         tvYoutubeStatus = findViewById(R.id.tvYoutubeStatus)
 
@@ -222,6 +231,16 @@ class MainActivity : AppCompatActivity() {
     private fun setupListeners() {
         btnConnectYoutube.setOnClickListener { startGoogleSignIn() }
         updateYoutubeConnectionStatus()
+
+        layoutYoutubeHeader.setOnClickListener {
+            if (layoutYoutubeContent.visibility == android.view.View.VISIBLE) {
+                layoutYoutubeContent.visibility = android.view.View.GONE
+                ivYoutubeExpandArrow.setImageResource(android.R.drawable.arrow_down_float)
+            } else {
+                layoutYoutubeContent.visibility = android.view.View.VISIBLE
+                ivYoutubeExpandArrow.setImageResource(android.R.drawable.arrow_up_float)
+            }
+        }
 
         btnSaveConfig.setOnClickListener { saveConfig() }
         btnStartIngestion.setOnClickListener { startIngestionService() }
