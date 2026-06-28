@@ -37,6 +37,8 @@ We resolved all architectural bugs, runtime crashes, and operational gaps in the
     * Raw clips local storage folder path.
     * Active FFmpeg merging status (which mergeId and count of clips).
     * YouTube upload progress (exact percentage, uploaded/total file sizes, and completed video IDs).
+23. **Resolved Merge Block (Uncompleted past date clips):** Deletes any uncompleted (`PENDING` or `FAILED`) clips for historical dates right inside the merge check loop, preventing old failed downloads from blocking future daily merges.
+24. **Stuck States Recovery (Service startup):** Implemented startup database reset operations in `DashcamIngestionService.onCreate()` to reset stuck `PROCESSING` merges back to `PENDING` and stuck `DOWNLOADING` clips back to `PENDING` when the service starts up, preventing indefinite "Merging..." locks.
 
 ---
 
@@ -102,11 +104,11 @@ We verified the changes by executing full gradle compiles and packaging processe
 $env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
 .\gradlew.bat compileDebugKotlin
 ```
-- **Result:** `BUILD SUCCESSFUL` (26s)
+- **Result:** `BUILD SUCCESSFUL` (20s)
 
 ### APK Assembly (Final Packaging)
 ```powershell
 $env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
 .\gradlew.bat assembleDebug
 ```
-- **Result:** `BUILD SUCCESSFUL` (23s). Code compiles, resource processing finishes, Room schemas are verified, and the final unsigned debug APK is successfully generated.
+- **Result:** `BUILD SUCCESSFUL` (21s). Code compiles, resource processing finishes, Room schemas are verified, and the final unsigned debug APK is successfully generated.

@@ -43,6 +43,9 @@ interface RawClipDao {
     @Query("DELETE FROM raw_clips WHERE dateString = :dateString AND downloadStatus != 'COMPLETED'")
     suspend fun deleteNonCompletedClipsByDate(dateString: String)
 
+    @Query("UPDATE raw_clips SET downloadStatus = 'PENDING' WHERE downloadStatus = 'DOWNLOADING'")
+    suspend fun resetDownloadingClips()
+
     /**
      * Atomic wrapper: mark clip completed and record its local path and file size.
      * Called from ingestion service after successful streaming download.

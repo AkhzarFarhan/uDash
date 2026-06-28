@@ -60,4 +60,7 @@ interface DailyMergeDao {
     suspend fun markMergeFailed(mergeId: String) {
         updateMergeStatus(mergeId, MergeStatus.FAILED)
     }
+
+    @Query("UPDATE daily_merges SET mergeStatus = 'PENDING' WHERE mergeStatus = 'PROCESSING'")
+    suspend fun resetProcessingMerges()
 }

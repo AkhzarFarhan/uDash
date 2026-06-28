@@ -59,6 +59,12 @@ class DashcamIngestionService : Service() {
             startForeground(NOTIFICATION_ID, createNotification())
         }
         
+        // Reset stuck processing merges and downloading clips on startup
+        serviceScope.launch {
+            db.rawClipDao().resetDownloadingClips()
+            db.dailyMergeDao().resetProcessingMerges()
+        }
+
         setupDashcamNetwork()
     }
 
@@ -271,8 +277,7 @@ class DashcamIngestionService : Service() {
         serviceScope.launch {
             val orchestrator = FfmpegOrchestrator(this@DashcamIngestionService, db)
             for (dateStr in datesToMerge) {
-                val nonCompleted = db.rawClipDao().countNonCompletedByDate(dateStr)
-                if (nonCompleted > 0) continue
+                db.rawClipDao().deleteNonCompletedClipsByDate(dateStr)
 
                 val completedClips = db.rawClipDao().getCompletedClipsByDate(dateStr)
                 if (completedClips.isEmpty()) continue
