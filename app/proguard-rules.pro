@@ -9,6 +9,25 @@
 -keep interface okhttp3.** { *; }
 -dontwarn okhttp3.**
 
+# Retrofit
+-dontwarn retrofit2.**
+-keep class retrofit2.** { *; }
+-keepattributes Signature
+-keepattributes Exceptions
+
+# Gson / YouTube API Response Models
+-keep class com.utility.dashcam.network.YouTubeChannelResponse { *; }
+-keep class com.utility.dashcam.network.PageInfo { *; }
+-keep class com.utility.dashcam.network.ChannelItem { *; }
+-keep class com.utility.dashcam.network.ChannelSnippet { *; }
+-keep class com.utility.dashcam.network.Thumbnails { *; }
+-keep class com.utility.dashcam.network.ThumbnailInfo { *; }
+-keep class com.utility.dashcam.network.ChannelContentDetails { *; }
+-keep class com.utility.dashcam.network.RelatedPlaylists { *; }
+-keep class com.utility.dashcam.network.ChannelStatistics { *; }
+-keep class com.utility.dashcam.network.TokenManager$* { *; }
+-keepattributes *Annotation*
+
 # Google API Client
 -keep class com.google.api.client.** { *; }
 -keep class com.google.api.services.youtube.** { *; }

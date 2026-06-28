@@ -13,8 +13,11 @@ interface RawClipDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertRawClips(clips: List<RawClipEntity>)
 
-    @Query("SELECT * FROM raw_clips WHERE dateString = :dateString")
+    @Query("SELECT * FROM raw_clips WHERE dateString = :dateString ORDER BY fileName ASC")
     fun getRawClipsByDate(dateString: String): Flow<List<RawClipEntity>>
+
+    @Query("SELECT * FROM raw_clips WHERE dateString = :dateString AND downloadStatus = 'COMPLETED' ORDER BY fileName ASC")
+    suspend fun getCompletedClipsByDate(dateString: String): List<RawClipEntity>
 
     @Query("SELECT * FROM raw_clips WHERE downloadStatus = :status")
     suspend fun getRawClipsByStatus(status: String): List<RawClipEntity>
@@ -28,18 +31,29 @@ interface RawClipDao {
     @Query("SELECT COUNT(*) FROM raw_clips WHERE dateString = :dateString AND downloadStatus != 'COMPLETED'")
     suspend fun countNonCompletedByDate(dateString: String): Int
 
-    @Query("UPDATE raw_clips SET downloadStatus = :status, localFilePath = :localPath WHERE fileName = :fileName")
-    suspend fun updateDownloadStatus(fileName: String, status: String, localPath: String?)
+    @Query("UPDATE raw_clips SET downloadStatus = :status, localFilePath = :localPath, fileSize = :size WHERE fileName = :fileName")
+    suspend fun updateDownloadSuccess(fileName: String, status: String, localPath: String?, size: Long)
+
+    @Query("UPDATE raw_clips SET downloadStatus = :status WHERE fileName = :fileName")
+    suspend fun updateDownloadStatus(fileName: String, status: String)
 
     @Query("DELETE FROM raw_clips WHERE dateString = :dateString")
     suspend fun deleteCachedClipsByDate(dateString: String)
 
+    @Query("DELETE FROM raw_clips WHERE dateString = :dateString AND downloadStatus != 'COMPLETED'")
+    suspend fun deleteNonCompletedClipsByDate(dateString: String)
+
     /**
-     * Atomic wrapper: mark clip completed and record its local path.
+     * Atomic wrapper: mark clip completed and record its local path and file size.
      * Called from ingestion service after successful streaming download.
      */
     @Transaction
-    suspend fun markDownloadCompleted(fileName: String, localPath: String) {
-        updateDownloadStatus(fileName, DownloadStatus.COMPLETED, localPath)
+    suspend fun markDownloadCompleted(fileName: String, localPath: String, size: Long) {
+        updateDownloadSuccess(fileName, DownloadStatus.COMPLETED, localPath, size)
+    }
+
+    @Transaction
+    suspend fun markDownloadFailed(fileName: String) {
+        updateDownloadStatus(fileName, DownloadStatus.FAILED)
     }
 }

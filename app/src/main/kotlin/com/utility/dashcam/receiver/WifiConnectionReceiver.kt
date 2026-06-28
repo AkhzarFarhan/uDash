@@ -23,14 +23,7 @@ class WifiConnectionReceiver : BroadcastReceiver() {
         val action = intent.action
         if (action != WifiManager.NETWORK_STATE_CHANGED_ACTION && action != Intent.ACTION_BOOT_COMPLETED) return
 
-        val wifiManager = context.getSystemService(Context.WIFI_SERVICE) as WifiManager
-        val info = wifiManager.connectionInfo
-        val ssid = info.ssid?.replace("\"", "") ?: return
-        if ("<unknown ssid>" == ssid) return
-        val homeSsid = ConfigStore.getHomeWifiSsid(context)
-        if (homeSsid.isBlank()) return
-        if (ssid == homeSsid) {
-            YouTubeUploadWorker.enqueueUpload(context)
-        }
+        // Enqueue the worker. WorkManager will ensure it only runs when unmetered Wi-Fi is connected and charging.
+        YouTubeUploadWorker.enqueueUpload(context)
     }
 }

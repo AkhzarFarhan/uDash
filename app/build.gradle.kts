@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -6,24 +8,70 @@ plugins {
 
 android {
     namespace = "com.utility.dashcam"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.utility.dashcam"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    buildFeatures {
+        buildConfig = true
+    }
+
     buildTypes {
+        debug {
+            val localProps = Properties()
+            val localPropsFile = rootProject.file("local.properties")
+            if (localPropsFile.exists()) {
+                localProps.load(localPropsFile.inputStream())
+            }
+            buildConfigField(
+                "String",
+                "YOUTUBE_CLIENT_ID",
+                "\"${localProps.getProperty("YT_CLIENT_ID", "")}\""
+            )
+            buildConfigField(
+                "String",
+                "YOUTUBE_CLIENT_SECRET",
+                "\"${localProps.getProperty("YT_CLIENT_SECRET", "")}\""
+            )
+            buildConfigField(
+                "String",
+                "YOUTUBE_REFRESH_TOKEN",
+                "\"${localProps.getProperty("YT_REFRESH_TOKEN", "")}\""
+            )
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
+            )
+            val localProps = Properties()
+            val localPropsFile = rootProject.file("local.properties")
+            if (localPropsFile.exists()) {
+                localProps.load(localPropsFile.inputStream())
+            }
+            buildConfigField(
+                "String",
+                "YOUTUBE_CLIENT_ID",
+                "\"${localProps.getProperty("YT_CLIENT_ID", "")}\""
+            )
+            buildConfigField(
+                "String",
+                "YOUTUBE_CLIENT_SECRET",
+                "\"${localProps.getProperty("YT_CLIENT_SECRET", "")}\""
+            )
+            buildConfigField(
+                "String",
+                "YOUTUBE_REFRESH_TOKEN",
+                "\"${localProps.getProperty("YT_REFRESH_TOKEN", "")}\""
             )
         }
     }
@@ -61,10 +109,17 @@ dependencies {
 
     // Network & Authentication
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("com.google.code.gson:gson:2.10.1")
     implementation("com.google.api-client:google-api-client-android:2.2.0")
     implementation("com.google.oauth-client:google-oauth-client-jetty:1.34.1")
     implementation("com.google.apis:google-api-services-youtube:v3-rev20231011-2.0.0")
-    
+
+    // Google Sign-In (for in-app YouTube OAuth flow)
+    implementation("com.google.android.gms:play-services-auth:21.0.0")
+
     // Security
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 

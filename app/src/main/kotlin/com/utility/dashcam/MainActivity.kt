@@ -24,7 +24,16 @@ import com.utility.dashcam.data.local.UploadStatus
 import com.utility.dashcam.service.DashcamIngestionService
 import com.utility.dashcam.util.ConfigStore
 import com.utility.dashcam.worker.YouTubeUploadWorker
+import com.utility.dashcam.network.TokenManager
+import com.utility.dashcam.network.YouTubeOAuthHelper
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.api.services.youtube.YouTubeScopes
+import com.google.android.gms.common.api.Scope
+import androidx.activity.result.contract.ActivityResultContracts
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -46,6 +55,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var etClientSecret: EditText
     private lateinit var etRefreshToken: EditText
 
+    // Connect YouTube (in-app OAuth)
+    private lateinit var btnConnectYoutube: Button
+    private lateinit var tvYoutubeStatus: TextView
+
     // Action buttons
     private lateinit var btnSaveConfig: Button
     private lateinit var btnStartIngestion: Button
@@ -58,6 +71,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvPendingUploadsCount: TextView
     private lateinit var tvCompletedUploadsCount: TextView
     private lateinit var tvCurrentStatus: TextView
+    private lateinit var cardError: com.google.android.material.card.MaterialCardView
+    private lateinit var tvErrorText: TextView
 
     private val db by lazy { AppDatabase.getDatabase(this) }
 
@@ -71,15 +86,73 @@ class MainActivity : AppCompatActivity() {
         arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
     }
 
+    private val googleSignInLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        try {
+            val account = task.getResult(com.google.android.gms.common.api.ApiException::class.java)
+            val authCode = account?.serverAuthCode
+            if (authCode != null) {
+                handleAuthCode(authCode)
+            } else {
+                Toast.makeText(this, getString(R.string.youtube_connect_error, "No auth code"), Toast.LENGTH_LONG).show()
+            }
+        } catch (e: Exception) {
+            Toast.makeText(this, getString(R.string.youtube_connect_error, e.message ?: "Unknown"), Toast.LENGTH_LONG).show()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Setup global crash handler to catch and display crashes in the UI
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, exception ->
+            val stackTrace = exception.stackTraceToString()
+            ConfigStore.setLastError(this, "Crash! ${exception.javaClass.simpleName}: ${exception.message}\n$stackTrace")
+            defaultHandler?.uncaughtException(thread, exception)
+        }
+
         setContentView(R.layout.activity_main)
+
+        TokenManager.init(this)
+        ConfigStore.initWith(this)
 
         requestPermissionsIfNeeded()
         initViews()
         loadCurrentConfig()
         setupListeners()
         observePipelineStatus()
+    }
+
+    private val configListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == "last_error") {
+            runOnUiThread {
+                updateErrorCard()
+            }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        ConfigStore.registerListener(this, configListener)
+        updateErrorCard()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        ConfigStore.unregisterListener(this, configListener)
+    }
+
+    private fun updateErrorCard() {
+        val lastError = ConfigStore.getLastError(this)
+        if (!lastError.isNullOrBlank()) {
+            tvErrorText.text = lastError
+            cardError.visibility = android.view.View.VISIBLE
+        } else {
+            cardError.visibility = android.view.View.GONE
+        }
     }
 
     private fun requestPermissionsIfNeeded() {
@@ -114,6 +187,9 @@ class MainActivity : AppCompatActivity() {
         etClientSecret = findViewById(R.id.etClientSecret)
         etRefreshToken = findViewById(R.id.etRefreshToken)
 
+        btnConnectYoutube = findViewById(R.id.btnConnectYoutube)
+        tvYoutubeStatus = findViewById(R.id.tvYoutubeStatus)
+
         btnSaveConfig = findViewById(R.id.btnSaveConfig)
         btnStartIngestion = findViewById(R.id.btnStartIngestion)
         btnStopIngestion = findViewById(R.id.btnStopIngestion)
@@ -124,6 +200,8 @@ class MainActivity : AppCompatActivity() {
         tvPendingUploadsCount = findViewById(R.id.tvPendingUploadsCount)
         tvCompletedUploadsCount = findViewById(R.id.tvCompletedUploadsCount)
         tvCurrentStatus = findViewById(R.id.tvCurrentStatus)
+        cardError = findViewById(R.id.cardError)
+        tvErrorText = findViewById(R.id.tvErrorText)
 
         // Privacy dropdown adapter
         val privacyOptions = arrayOf("private", "unlisted", "public")
@@ -142,6 +220,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupListeners() {
+        btnConnectYoutube.setOnClickListener { startGoogleSignIn() }
+        updateYoutubeConnectionStatus()
+
         btnSaveConfig.setOnClickListener { saveConfig() }
         btnStartIngestion.setOnClickListener { startIngestionService() }
         btnStopIngestion.setOnClickListener { stopIngestionService() }
@@ -165,6 +246,83 @@ class MainActivity : AppCompatActivity() {
         val intent = Intent(this, DashcamIngestionService::class.java)
         startForegroundService(intent)
         Toast.makeText(this, "Ingestion service started", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun startGoogleSignIn() {
+        val clientId = etClientId.text.toString().trim()
+        val clientSecret = etClientSecret.text.toString().trim()
+        if (clientId.isBlank() || clientSecret.isBlank()) {
+            Toast.makeText(this, getString(R.string.youtube_enter_credentials_first), Toast.LENGTH_LONG).show()
+            return
+        }
+        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestServerAuthCode(clientId, true)
+            .requestEmail()
+            .requestScopes(Scope(YouTubeScopes.YOUTUBE_UPLOAD), Scope(YouTubeScopes.YOUTUBE_READONLY))
+            .build()
+        val googleSignInClient = GoogleSignIn.getClient(this, gso)
+        googleSignInClient.signOut().addOnCompleteListener {
+            googleSignInLauncher.launch(googleSignInClient.signInIntent)
+        }
+    }
+
+    private fun handleAuthCode(authCode: String) {
+        val clientId = etClientId.text.toString().trim()
+        val clientSecret = etClientSecret.text.toString().trim()
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                YouTubeOAuthHelper.exchangeCodeForTokens(authCode, clientId, clientSecret)
+            }
+            result.onSuccess { tokens ->
+                ConfigStore.setOAuthClientId(this@MainActivity, clientId)
+                ConfigStore.setOAuthClientSecret(this@MainActivity, clientSecret)
+                ConfigStore.setOAuthRefreshToken(this@MainActivity, tokens.refreshToken!!)
+                if (!tokens.accessToken.isNullOrBlank()) {
+                    ConfigStore.setOAuthAccessToken(this@MainActivity, tokens.accessToken)
+                }
+                val emailResult = withContext(Dispatchers.IO) {
+                    tokens.accessToken?.let { YouTubeOAuthHelper.fetchUserEmail(it) }
+                }
+                val email = emailResult?.getOrNull() ?: "Connected"
+                ConfigStore.setOAuthAccountName(this@MainActivity, email)
+                etRefreshToken.setText(tokens.refreshToken)
+                updateYoutubeConnectionStatus()
+                TokenManager.invalidateToken()
+                Toast.makeText(this@MainActivity, getString(R.string.youtube_connect_success), Toast.LENGTH_SHORT).show()
+            }
+            result.onFailure { error ->
+                val msg = when (error) {
+                    is YouTubeOAuthHelper.OAuthExchangeException -> "${'$'}{error.httpCode}: ${'$'}{error.message}"
+                    else -> error.message ?: "Unknown error"
+                }
+                Toast.makeText(this@MainActivity, getString(R.string.youtube_connect_error, msg), Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun updateYoutubeConnectionStatus() {
+        val accountName = ConfigStore.getOAuthAccountName(this)
+        val refreshToken = ConfigStore.getOAuthRefreshToken(this)
+        if (!accountName.isNullOrBlank() && !refreshToken.isNullOrBlank()) {
+            tvYoutubeStatus.text = getString(R.string.youtube_connected, accountName)
+            btnConnectYoutube.text = getString(R.string.btn_disconnect_youtube)
+            btnConnectYoutube.setOnClickListener {
+                ConfigStore.setOAuthClientId(this, "")
+                ConfigStore.setOAuthClientSecret(this, "")
+                ConfigStore.setOAuthRefreshToken(this, "")
+                ConfigStore.setOAuthAccessToken(this, "")
+                ConfigStore.setOAuthAccountName(this, "")
+                etClientId.text.clear()
+                etClientSecret.text.clear()
+                etRefreshToken.text.clear()
+                TokenManager.invalidateToken()
+                updateYoutubeConnectionStatus()
+            }
+        } else {
+            tvYoutubeStatus.text = getString(R.string.youtube_not_connected)
+            btnConnectYoutube.text = getString(R.string.btn_connect_youtube)
+            btnConnectYoutube.setOnClickListener { startGoogleSignIn() }
+        }
     }
 
     private fun stopIngestionService() {

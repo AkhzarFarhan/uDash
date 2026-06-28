@@ -12,7 +12,8 @@ import androidx.room.PrimaryKey
     indices = [Index(value = ["uploadStatus"])]
 )
 data class DailyMergeEntity(
-    @PrimaryKey val dateString: String,    // Format: "YYYY-MM-DD"
+    @PrimaryKey val mergeId: String,       // Format: "YYYY-MM-DD_partX"
+    val dateString: String,                // Format: "YYYY-MM-DD"
     val localMergedPath: String?,          // Path to final concatenated file
     val totalSize: Long,                   // Aggregated byte length
     val mergeStatus: String,               // Enums: PENDING, PROCESSING, COMPLETED, FAILED

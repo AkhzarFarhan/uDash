@@ -23,6 +23,7 @@ object ConfigStore {
     private const val KEY_OAUTH_CLIENT_SECRET = "oauth_client_secret"
     private const val KEY_OAUTH_REFRESH_TOKEN = "oauth_refresh_token"
     private const val KEY_OAUTH_ACCOUNT_NAME = "oauth_account_name"
+    private const val KEY_OAUTH_ACCESS_TOKEN = "oauth_access_token"
     private const val KEY_INGESTION_ENABLED = "ingestion_enabled"
 
     // Defaults per Architecture spec
@@ -84,7 +85,7 @@ object ConfigStore {
 
     fun getYoutubePrivacy(context: Context): String {
         val v = init(context).getString(KEY_YOUTUBE_PRIVACY, DEFAULT_YOUTUBE_PRIVACY) ?: DEFAULT_YOUTUBE_PRIVACY
-        return if (v == "private" || v == "unlisted") v else DEFAULT_YOUTUBE_PRIVACY
+        return if (v == "private" || v == "unlisted" || v == "public") v else DEFAULT_YOUTUBE_PRIVACY
     }
 
     fun setYoutubePrivacy(context: Context, privacy: String) {
@@ -127,6 +128,22 @@ object ConfigStore {
         init(context).edit().putString(KEY_OAUTH_ACCOUNT_NAME, name).apply()
     }
 
+    fun getOAuthAccessToken(context: Context): String? {
+        return init(context).getString(KEY_OAUTH_ACCESS_TOKEN, null)
+    }
+
+    fun setOAuthAccessToken(context: Context, token: String) {
+        init(context).edit().putString(KEY_OAUTH_ACCESS_TOKEN, token).apply()
+    }
+
+    /**
+     * Pre-initialize ConfigStore with application context.
+     * Call once at startup so TokenManager can resolve credentials without passing Context.
+     */
+    fun initWith(context: Context) {
+        init(context.applicationContext)
+    }
+
     // --- Service Control ---
 
     fun isIngestionEnabled(context: Context): Boolean {
@@ -135,5 +152,24 @@ object ConfigStore {
 
     fun setIngestionEnabled(context: Context, enabled: Boolean) {
         init(context).edit().putBoolean(KEY_INGESTION_ENABLED, enabled).apply()
+    }
+
+    // --- Error Logging ---
+    private const val KEY_LAST_ERROR = "last_error"
+
+    fun getLastError(context: Context): String? {
+        return init(context).getString(KEY_LAST_ERROR, null)
+    }
+
+    fun setLastError(context: Context, error: String?) {
+        init(context).edit().putString(KEY_LAST_ERROR, error).apply()
+    }
+
+    fun registerListener(context: Context, listener: android.content.SharedPreferences.OnSharedPreferenceChangeListener) {
+        init(context).registerOnSharedPreferenceChangeListener(listener)
+    }
+
+    fun unregisterListener(context: Context, listener: android.content.SharedPreferences.OnSharedPreferenceChangeListener) {
+        init(context).unregisterOnSharedPreferenceChangeListener(listener)
     }
 }

@@ -23,15 +23,39 @@ class DashcamConnectionReceiver : BroadcastReceiver() {
         val action = intent.action
         if (action != WifiManager.NETWORK_STATE_CHANGED_ACTION && action != Intent.ACTION_BOOT_COMPLETED) return
 
-        val wifiManager = context.getSystemService(Context.WIFI_SERVICE) as WifiManager
-        val info = wifiManager.connectionInfo
-        val ssid = info.ssid?.replace("\"", "") ?: return
-        if ("<unknown ssid>" == ssid) return
+        val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
         val prefix = ConfigStore.getDashcamSsidPrefix(context)
-        if (prefix.isBlank()) return
-        if (ssid.startsWith(prefix, ignoreCase = true)) {
-            val serviceIntent = Intent(context, DashcamIngestionService::class.java)
-            context.startForegroundService(serviceIntent)
+        val configuredIp = ConfigStore.getDashcamIp(context)
+
+        var isConnected = false
+        val info = wifiManager.connectionInfo
+        val ssid = info?.ssid?.replace("\"", "")
+
+        if (ssid != null && ssid != "<unknown ssid>" && ssid.isNotBlank()) {
+            if (ssid.startsWith(prefix, ignoreCase = true)) {
+                isConnected = true
+            }
+        } else {
+            // Fallback: Check DHCP gateway IP (works in background without location permissions)
+            val dhcpInfo = wifiManager.dhcpInfo
+            val gatewayIp = intToIp(dhcpInfo?.gateway ?: 0)
+            if (gatewayIp == configuredIp && gatewayIp != "0.0.0.0") {
+                isConnected = true
+            }
         }
+
+        if (isConnected) {
+            val request = androidx.work.OneTimeWorkRequest.Builder(
+                com.utility.dashcam.worker.DashcamIngestionStartWorker::class.java
+            ).build()
+            androidx.work.WorkManager.getInstance(context).enqueue(request)
+        }
+    }
+
+    private fun intToIp(i: Int): String {
+        return (i and 0xFF).toString() + "." +
+               ((i shr 8) and 0xFF) + "." +
+               ((i shr 16) and 0xFF) + "." +
+               ((i shr 24) and 0xFF)
     }
 }
