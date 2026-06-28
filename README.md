@@ -40,11 +40,11 @@ uDash is designed with **Clean Architecture** patterns:
 
 ```mermaid
 graph TD
-    UI[Jetpack Compose UI] --> Repos[Repositories: FileRepository, LogRepository]
-    Workers[WorkManager Workers] --> Repos
-    Repos --> DB[(Room Database)]
-    Repos --> Net[Network Clients: DashcamClient, YouTubeUploader]
-    Net --> API[External APIs: Dashcam AP, YouTube Resumable API]
+    UI["Jetpack Compose UI"] --> Repos["Repositories (FileRepository, LogRepository)"]
+    Workers["WorkManager Workers"] --> Repos
+    Repos --> DB[("Room Database")]
+    Repos --> Net["Network Clients (DashcamClient, YouTubeUploader)"]
+    Net --> API["External APIs (Dashcam AP, YouTube Resumable API)"]
 ```
 
 - **Data Layer:** Handles network socket bindings to bypass standard gateway routing, SQLite persistence, and OAuth session tokens.
