@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="uDash — DDPAI Dashcam Web Manager. Scan, stream, and download dashcam video clips.">
+  <title>uDash — Dashcam Manager</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎥</text></svg>">
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ═══ Header ═══ -->
+  <header class="header">
+    <div class="header-brand">
+      <div class="logo">🎥</div>
+      <div>
+        <h1>uDash</h1>
+        <div class="subtitle">DDPAI Dashcam Manager</div>
+      </div>
+    </div>
+    <div class="header-status">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="status-text">Disconnected</span>
+    </div>
+  </header>
+
+  <!-- ═══ Connection Bar ═══ -->
+  <div class="connection-bar">
+    <label for="ip-input">Dashcam IP</label>
+    <div class="input-group">
+      <input
+        type="text"
+        id="ip-input"
+        value="193.168.0.1"
+        placeholder="e.g. 193.168.0.1"
+        spellcheck="false"
+        autocomplete="off"
+      >
+      <button class="btn btn-primary btn-scan" id="btn-scan">
+        🔍 Scan
+      </button>
+    </div>
+    <button class="btn btn-secondary" id="btn-proxy-toggle" title="Toggle CORS proxy mode">
+      🌐 Proxy: OFF
+    </button>
+  </div>
+
+  <!-- ═══ Toolbar ═══ -->
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <button class="btn btn-secondary" id="btn-select-all" disabled>
+        ☐ Select All
+      </button>
+      <div class="divider"></div>
+      <button class="btn btn-primary" id="btn-batch" disabled>
+        📥 Batch Download
+      </button>
+    </div>
+    <div class="toolbar-right">
+      <div class="download-path-display" id="path-display">
+        <span class="icon">📁</span> Browser Downloads
+      </div>
+      <button class="btn btn-ghost" id="btn-choose-path" title="Choose custom download folder (Chromium only)">
+        📂 Choose Folder
+      </button>
+    </div>
+  </div>
+
+  <!-- ═══ Stats Bar ═══ -->
+  <div class="stats-bar">
+    <div class="stat-chip">
+      <span class="stat-icon">📹</span>
+      <span>Total:</span>
+      <span class="stat-value" id="stat-total">0</span>
+    </div>
+    <div class="stat-chip">
+      <span class="stat-icon">☑️</span>
+      <span>Selected:</span>
+      <span class="stat-value" id="stat-selected">0</span>
+    </div>
+    <div class="stat-chip">
+      <span class="stat-icon">✅</span>
+      <span>Downloaded:</span>
+      <span class="stat-value" id="stat-downloaded">0</span>
+    </div>
+    <div class="stat-chip">
+      <span class="stat-icon">💾</span>
+      <span>Total Size:</span>
+      <span class="stat-value" id="stat-size">—</span>
+    </div>
+  </div>
+
+  <!-- ═══ Video Grid ═══ -->
+  <div class="video-grid" id="video-grid">
+    <div class="empty-state">
+      <div class="empty-icon">📹</div>
+      <h3>No clips loaded</h3>
+      <p>Connect to your DDPAI dashcam Wi-Fi and press <strong>Scan</strong> to discover video clips on the memory card.</p>
+    </div>
+  </div>
+
+  <!-- ═══ Footer ═══ -->
+  <footer class="footer">
+    uDash v1.0.0 · DDPAI Dashcam Web Manager · Protocol: HTTP on 193.168.0.1:80
+  </footer>
+
+</div>
+
+<!-- ═══ Stream Modal ═══ -->
+<div class="modal-overlay" id="stream-modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 id="modal-title">—</h3>
+      <button class="btn btn-icon btn-ghost" id="btn-modal-close" title="Close player">✕</button>
+    </div>
+    <div class="modal-body">
+      <video id="modal-video" controls preload="auto"></video>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Batch Progress Overlay ═══ -->
+<div class="batch-overlay" id="batch-overlay">
+  <div class="batch-dialog">
+    <h3>📥 Batch Download</h3>
+    <p class="batch-subtitle" id="batch-subtitle">Preparing…</p>
+    <p class="batch-current" id="batch-current">—</p>
+    <div class="batch-progress-bar">
+      <div class="fill" id="batch-fill"></div>
+    </div>
+    <button class="btn btn-secondary" id="batch-cancel">Cancel</button>
+  </div>
+</div>
+
+<!-- ═══ Toast Container ═══ -->
+<div class="toast-container" id="toast-container"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
