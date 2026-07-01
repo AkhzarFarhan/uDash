@@ -820,6 +820,43 @@ body::before {
   transition: width var(--transition-normal);
 }
 
+/* ── Developer Log Panel ── */
+.log-details {
+  margin-top: 24px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--bg-card);
+  backdrop-filter: blur(20px);
+}
+
+.log-summary {
+  padding: 12px 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid var(--border-subtle);
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.log-summary:hover { color: var(--text-primary); }
+
+.log-panel {
+  padding: 16px 20px;
+  max-height: 240px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.6;
+  color: #4ade80;
+  background: #0a0a0f;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+}
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
   .app { padding: 16px; }

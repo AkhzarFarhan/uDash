@@ -43,9 +43,6 @@
         🔍 Scan
       </button>
     </div>
-    <button class="btn btn-secondary" id="btn-proxy-toggle" title="Toggle CORS proxy mode">
-      🌐 Proxy: OFF
-    </button>
   </div>
 
   <!-- ═══ Toolbar ═══ -->
@@ -63,7 +60,7 @@
       <div class="download-path-display" id="path-display">
         <span class="icon">📁</span> Browser Downloads
       </div>
-      <button class="btn btn-ghost" id="btn-choose-path" title="Choose custom download folder (Chromium only)">
+      <button class="btn btn-ghost" id="btn-choose-path" title="Choose custom download folder (Chrome/Edge only)">
         📂 Choose Folder
       </button>
     </div>
@@ -98,13 +95,23 @@
     <div class="empty-state">
       <div class="empty-icon">📹</div>
       <h3>No clips loaded</h3>
-      <p>Connect to your DDPAI dashcam Wi-Fi and press <strong>Scan</strong> to discover video clips on the memory card.</p>
+      <p>Connect this PC to dashcam WiFi (<strong>DDPAI_A1</strong>), then press <strong>Scan</strong>.</p>
+      <p style="margin-top:8px;font-size:0.8rem;color:#555568">
+        Run <code style="background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px">node server.js</code>
+        and open <code style="background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px">http://localhost:8080</code>
+      </p>
     </div>
   </div>
 
+  <!-- ═══ Developer Log ═══ -->
+  <details class="log-details" open>
+    <summary class="log-summary">🖥 Developer Log</summary>
+    <pre class="log-panel" id="log-panel"></pre>
+  </details>
+
   <!-- ═══ Footer ═══ -->
   <footer class="footer">
-    uDash v1.0.0 · DDPAI Dashcam Web Manager · Protocol: HTTP on 193.168.0.1:80
+    uDash v2.0.0 · DDPAI Dashcam Web Manager · Gateway: 193.168.0.1:80
   </footer>
 
 </div>
