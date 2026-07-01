@@ -15,9 +15,38 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
+const { execSync } = require('child_process');
+
+/* ── Dynamic Gateway/Dashcam IP Auto-detection ── */
+function getDefaultGateway() {
+  try {
+    if (process.platform === 'win32') {
+      const output = execSync('route print 0.0.0.0', { encoding: 'utf8' });
+      const lines = output.split('\n');
+      for (const line of lines) {
+        const parts = line.trim().split(/\s+/);
+        if (parts[0] === '0.0.0.0') {
+          return parts[2]; // Third column is Gateway
+        }
+      }
+    } else {
+      // Linux/Android (Termux)
+      const output = execSync('ip route show', { encoding: 'utf8' });
+      const match = output.match(/default\s+via\s+([\d.]+)/i);
+      if (match) {
+        return match[1];
+      }
+    }
+  } catch (err) {
+    // Fail silently, use fallback
+  }
+  return null;
+}
 
 const PORT = parseInt(process.argv[2], 10) || 8080;
-const DASHCAM_IP = process.argv[3] || '193.168.0.1';
+const DETECTED_IP = getDefaultGateway();
+const DASHCAM_IP = process.argv[3] || DETECTED_IP || '193.168.0.1';
+const IS_AUTO_DETECTED = !!(process.argv[3] === undefined && DETECTED_IP);
 
 /* ── MIME types for static files ── */
 const MIME = {
@@ -146,20 +175,23 @@ server.listen(PORT, '0.0.0.0', () => {
     ? `http://${localIPs[0]}:${PORT}`
     : '(connect to dashcam WiFi first)';
 
+  const detectStatus = IS_AUTO_DETECTED
+    ? `Auto-detected Gateway IP`
+    : `Using default/manual IP`;
+
   console.log(`
 ╔══════════════════════════════════════════════════════════════╗
 ║                                                              ║
 ║   🎥  uDash — DDPAI Dashcam Web Manager                     ║
 ║                                                              ║
-║   Laptop:     http://localhost:${String(PORT).padEnd(5)}                         ║
-║   Phone:      ${phoneUrl.padEnd(45)}║
-║   Dashcam IP: ${DASHCAM_IP.padEnd(15)}                                ║
+║   Web UI:     http://localhost:${String(PORT).padEnd(5)}                         ║
+║   Remote UI:  ${phoneUrl.padEnd(45)}║
+║   Dashcam IP: ${DASHCAM_IP.padEnd(15)} (${detectStatus.padEnd(25)}) ║
 ║   Proxy:      /api/* → http://${DASHCAM_IP.padEnd(15)}              ║
 ║                                                              ║
-║   1. Connect laptop + phone to dashcam WiFi (DDPAI_A1)      ║
-║   2. On laptop:  http://localhost:${String(PORT).padEnd(5)}                     ║
-║   3. On phone:   ${phoneUrl.padEnd(41)}║
-║   4. Click "Scan" to discover video clips                    ║
+║   1. Connect device to dashcam WiFi (DDPAI_A1)               ║
+║   2. Open Web UI in browser                                  ║
+║   3. Click "Scan" to discover video clips                    ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
 `);
