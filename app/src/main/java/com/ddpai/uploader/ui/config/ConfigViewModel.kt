@@ -16,6 +16,8 @@ import okhttp3.Request
 
 class ConfigViewModel(application: Application) : AndroidViewModel(application) {
     private val sl = ServiceLocator.get(application)
+    val packageName: String = com.ddpai.uploader.util.SigningInfo.packageName(application)
+    val signingSha1: String = com.ddpai.uploader.util.SigningInfo.signingSha1(application)
     private val repo = sl.config
     val auth = sl.auth
     private val logger = sl.log
