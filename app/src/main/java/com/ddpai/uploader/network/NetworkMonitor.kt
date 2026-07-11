@@ -42,7 +42,7 @@ class NetworkMonitor(
             return
         }
         val gatewayConfigured = configRepo.config.value.dashcamGateway
-        val gatewayIp = NetworkGateway.extract(cm, network)
+        val gatewayIp = NetworkGateway.extract(cm, network, context)
         val type = when {
             gatewayIp == gatewayConfigured -> NetworkType.DASHCAM_AP
             caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) -> NetworkType.HOME_WIFI
