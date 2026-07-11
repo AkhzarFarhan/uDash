@@ -1109,7 +1109,11 @@ git commit -m "refactor: resumable-upload responses via pure ResumeParser + type
 
 In `app/src/main/java/com/ddpai/uploader/pipeline/PipelineScheduler.kt`, replace `enqueueUpload`:
 ```kotlin
-    fun enqueueUpload(context: Context, initialDelayMillis: Long = 0L) {
+    fun enqueueUpload(
+        context: Context,
+        initialDelayMillis: Long = 0L,
+        existingPolicy: ExistingWorkPolicy = ExistingWorkPolicy.KEEP
+    ) {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(androidx.work.NetworkType.UNMETERED)
             .build()
@@ -1119,9 +1123,11 @@ In `app/src/main/java/com/ddpai/uploader/pipeline/PipelineScheduler.kt`, replace
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
             .build()
         WorkManager.getInstance(context)
-            .enqueueUniqueWork(UPLOAD_WORK, ExistingWorkPolicy.KEEP, req)
+            .enqueueUniqueWork(UPLOAD_WORK, existingPolicy, req)
     }
 ```
+
+> **Why the policy parameter:** the quota-pause branch re-enqueues from *inside* a running `UploadWorker`. With the default `KEEP`, the still-RUNNING `UPLOAD_WORK` counts as existing uncompleted work and the delayed request is silently dropped, so uploads never auto-resume. The quota branch must pass `ExistingWorkPolicy.REPLACE` so the unique work is rescheduled with the delay (single-worker concurrency is preserved because it's still one unique name). Normal callers keep `KEEP`.
 
 - [ ] **Step 2: Replace `UploadWorker.kt` in full**
 
@@ -1187,7 +1193,11 @@ class UploadWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
                     sl.config.setQuotaPausedUntil(until)
                     sl.files.setStatus(item.fileName, FileStatus.DOWNLOADED)
                     sl.log.w("UploadWorker", "Quota exceeded; pausing uploads until $until", item.fileName)
-                    PipelineScheduler.enqueueUpload(applicationContext, until - System.currentTimeMillis())
+                    PipelineScheduler.enqueueUpload(
+                        applicationContext,
+                        until - System.currentTimeMillis(),
+                        ExistingWorkPolicy.REPLACE
+                    )
                     return Result.success()
                 }
                 if (e.code == 401) {
