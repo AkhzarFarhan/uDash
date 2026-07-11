@@ -35,14 +35,23 @@ class YouTubeAuthManager(
             return@suspendCancellableCoroutine
         }
         val tokenReq = resp.createTokenExchangeRequest()
-        authService.performTokenRequest(tokenReq) { tokenResp, tokenEx ->
+        val secret = configRepo.config.value.youtubeClientSecret
+        // Declared as the SAM interface type (NOT a function-typed val) so it can be passed to
+        // both Java overloads of performTokenRequest — Kotlin SAM conversion only applies here.
+        val onToken = AuthorizationService.TokenResponseCallback { tokenResp, tokenEx ->
             if (tokenResp != null) {
                 val authState = AuthState(resp, tokenResp, tokenEx)
                 configRepo.saveAuthState(authState.jsonSerializeString())
+                configRepo.setNeedsReauth(false)
                 cont.resume(true)
             } else {
                 cont.resume(false)
             }
+        }
+        if (secret.isNotBlank()) {
+            authService.performTokenRequest(tokenReq, ClientSecretPost(secret), onToken)
+        } else {
+            authService.performTokenRequest(tokenReq, onToken)
         }
     }
 
@@ -52,13 +61,24 @@ class YouTubeAuthManager(
             return@suspendCancellableCoroutine
         }
         val state = AuthState.jsonDeserialize(json)
-        state.performActionWithFreshTokens(authService) { token, _, _ ->
+        val secret = configRepo.config.value.youtubeClientSecret
+        val action = net.openid.appauth.AuthState.AuthStateAction { token, _, ex ->
             if (token != null) {
                 configRepo.saveAuthState(state.jsonSerializeString())
                 cont.resume(token)
             } else {
+                if (ex != null) configRepo.setNeedsReauth(true)
                 cont.resume(null)
             }
+        }
+        if (secret.isNotBlank()) {
+            state.performActionWithFreshTokens(
+                authService,
+                net.openid.appauth.ClientSecretPost(secret),
+                action
+            )
+        } else {
+            state.performActionWithFreshTokens(authService, action)
         }
     }
 

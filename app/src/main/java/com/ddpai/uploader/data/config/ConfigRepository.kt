@@ -58,4 +58,29 @@ class ConfigRepository(context: Context) {
     fun clearAuthState() {
         securePrefs.edit().remove("authState").apply()
     }
+
+    data class RuntimeState(val quotaPausedUntil: Long = 0L, val needsReauth: Boolean = false)
+
+    private val _runtime = kotlinx.coroutines.flow.MutableStateFlow(loadRuntime())
+    val runtimeState: kotlinx.coroutines.flow.StateFlow<RuntimeState> =
+        _runtime.asStateFlow()
+
+    private fun loadRuntime() = RuntimeState(
+        quotaPausedUntil = securePrefs.getLong("quotaPausedUntil", 0L),
+        needsReauth = securePrefs.getBoolean("needsReauth", false)
+    )
+
+    fun setQuotaPausedUntil(ts: Long) {
+        securePrefs.edit().putLong("quotaPausedUntil", ts).apply()
+        _runtime.value = _runtime.value.copy(quotaPausedUntil = ts)
+    }
+
+    fun getQuotaPausedUntil(): Long = _runtime.value.quotaPausedUntil
+
+    fun setNeedsReauth(v: Boolean) {
+        securePrefs.edit().putBoolean("needsReauth", v).apply()
+        _runtime.value = _runtime.value.copy(needsReauth = v)
+    }
+
+    fun getNeedsReauth(): Boolean = _runtime.value.needsReauth
 }
