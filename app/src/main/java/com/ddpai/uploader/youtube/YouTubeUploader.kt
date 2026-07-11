@@ -40,7 +40,7 @@ class YouTubeUploader(
         }
     }
 
-    suspend fun queryOffset(sessionUri: String, total: Long): Long {
+    suspend fun queryOffset(sessionUri: String, total: Long): ResumeResult {
         val token = auth.freshAccessToken() ?: throw IllegalStateException("Not authorized")
         val req = Request.Builder().url(sessionUri)
             .header("Authorization", "Bearer $token")
@@ -48,14 +48,11 @@ class YouTubeUploader(
             .put(ByteArray(0).toRequestBody(null))
             .build()
         http.newCall(req).execute().use { resp ->
-            return when (resp.code) {
-                200, 201 -> total
-                308 -> resp.header("Range")?.substringAfterLast("-")?.toLongOrNull()?.plus(1) ?: 0L
-                else -> 0L
-            }
+            return ResumeParser.parseOffset(resp.code, resp.header("Range"), resp.body?.string().orEmpty())
         }
     }
 
+    /** Uploads from [startByte]; returns YouTube video ID on success, throws [UploadHttpException] otherwise. */
     suspend fun uploadFrom(
         sessionUri: String,
         file: File,
@@ -71,11 +68,11 @@ class YouTubeUploader(
             .put(body)
             .build()
         http.newCall(req).execute().use { resp ->
-            if (resp.code == 200 || resp.code == 201) {
-                val id = Regex("\"id\"\\s*:\\s*\"([^\"]+)\"").find(resp.body?.string().orEmpty())?.groupValues?.get(1)
-                return id ?: throw IOException("Upload ok but no video id")
+            val text = resp.body?.string().orEmpty()
+            return when (val r = ResumeParser.parseFinal(resp.code, text)) {
+                is ResumeResult.Complete -> r.videoId ?: throw UploadHttpException(resp.code, "ok but no video id")
+                else -> throw UploadHttpException(resp.code, text)
             }
-            throw IOException("upload ${resp.code}: ${resp.body?.string()}")
         }
     }
 }
