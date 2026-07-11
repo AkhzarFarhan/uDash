@@ -35,4 +35,16 @@ interface VideoFileDao {
 
     @Query("UPDATE video_files SET status = :status, updatedAtEpoch = :ts WHERE fileName = :name")
     suspend fun setStatus(name: String, status: String, ts: Long = System.currentTimeMillis())
+
+    @Query(
+        "UPDATE video_files SET retryCount = retryCount + 1, status = :retryStatus, " +
+            "errorMessage = :error, updatedAtEpoch = :ts WHERE fileName = :name"
+    )
+    suspend fun recordRetry(name: String, retryStatus: String, error: String, ts: Long = System.currentTimeMillis())
+
+    @Query(
+        "UPDATE video_files SET downloadedBytes = :downloaded, sizeBytes = :size, " +
+            "updatedAtEpoch = :ts WHERE fileName = :name"
+    )
+    suspend fun setDownloadProgress(name: String, downloaded: Long, size: Long, ts: Long = System.currentTimeMillis())
 }

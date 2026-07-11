@@ -38,6 +38,13 @@ class FileRepository(
     suspend fun get(name: String) = dao.getByName(name)
     suspend fun update(e: VideoFileEntity) = dao.update(e.copy(updatedAtEpoch = System.currentTimeMillis()))
     suspend fun setStatus(name: String, s: FileStatus) = dao.setStatus(name, s.name)
+
+    suspend fun recordRetry(name: String, retryStatus: FileStatus, error: String) =
+        dao.recordRetry(name, retryStatus.name, error)
+
+    suspend fun setDownloadProgress(name: String, downloaded: Long, size: Long) =
+        dao.setDownloadProgress(name, downloaded, size)
+
     fun fileFor(name: String) = File(storageDir, name)
 
     suspend fun markCorruptAndReset(name: String, reason: String) {

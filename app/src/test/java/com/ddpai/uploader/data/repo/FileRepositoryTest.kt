@@ -42,6 +42,8 @@ class FileRepositoryTest {
             override fun observeAll(): Flow<List<VideoFileEntity>> = emptyFlow()
             override fun observeCountByStatus(status: String): Flow<Int> = emptyFlow()
             override suspend fun setStatus(name: String, status: String, ts: Long) {}
+            override suspend fun recordRetry(name: String, retryStatus: String, error: String, ts: Long) {}
+            override suspend fun setDownloadProgress(name: String, downloaded: Long, size: Long, ts: Long) {}
         }
 
         val repository = FileRepository(mockDao, mockLog, File("."))
