@@ -21,6 +21,9 @@ class ServiceLocator private constructor(context: Context) {
     val notifications = NotificationHelper
     val progress = ProgressBus
     val activeNetworkType = kotlinx.coroutines.flow.MutableStateFlow(com.ddpai.uploader.network.NetworkType.NONE)
+    val io = kotlinx.coroutines.CoroutineScope(
+        kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO
+    )
 
     @Volatile var currentDashcamNetwork: Network? = null
 
