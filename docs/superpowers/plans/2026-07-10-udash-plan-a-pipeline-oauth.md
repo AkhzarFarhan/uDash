@@ -563,6 +563,11 @@ class DownloadWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
                 val verdict = verifier.verify(target)
                 if (!verdict.valid) {
                     sl.files.markCorruptAndReset(item.fileName, verdict.reason)
+                    val cur = sl.files.get(item.fileName)
+                    if (cur != null && RetryPolicy.shouldFail(cur.retryCount, maxRetries)) {
+                        sl.files.setStatus(item.fileName, FileStatus.FAILED)
+                        sl.log.w("DownloadWorker", "${item.fileName} repeatedly corrupt → FAILED", item.fileName)
+                    }
                     continue
                 }
                 sl.files.update(
@@ -633,10 +638,13 @@ git commit -m "fix: DownloadWorker self-resolves AP, tolerates fg refusal, skips
 
 - [ ] **Step 1: Add the scope**
 
-In `app/src/main/java/com/ddpai/uploader/di/ServiceLocator.kt`, add near the other `val` declarations:
+In `app/src/main/java/com/ddpai/uploader/di/ServiceLocator.kt`, add near the other `val` declarations (AFTER the `log` field, which the handler references). The `CoroutineExceptionHandler` is mandatory: `launch` is fire-and-forget, and without a handler an uncaught exception (e.g. a Room/SQLite error) from a background write would crash the whole process — the opposite of fault tolerance.
 ```kotlin
+    private val ioErrors = kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
+        log.e("ServiceLocator", "Background IO task failed: ${e.message}")
+    }
     val io = kotlinx.coroutines.CoroutineScope(
-        kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO
+        kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO + ioErrors
     )
 ```
 
