@@ -452,6 +452,14 @@ In `app/src/main/java/com/ddpai/uploader/data/db/VideoFileDao.kt`, add inside th
             "updatedAtEpoch = :ts WHERE fileName = :name"
     )
     suspend fun setDownloadProgress(name: String, downloaded: Long, size: Long, ts: Long = System.currentTimeMillis())
+
+    /**
+     * Reset rows stuck in a transient state after a process kill (no catch block ran). Called once
+     * at worker start; safe because each pipeline worker is unique (KEEP), so no live worker holds
+     * a row in [fromStatus]. Returns the number of rows reclaimed.
+     */
+    @Query("UPDATE video_files SET status = :toStatus, updatedAtEpoch = :ts WHERE status = :fromStatus")
+    suspend fun reclaimOrphans(fromStatus: String, toStatus: String, ts: Long = System.currentTimeMillis()): Int
 ```
 
 - [ ] **Step 2: Add repository wrappers**
@@ -463,6 +471,9 @@ In `app/src/main/java/com/ddpai/uploader/data/repo/FileRepository.kt`, add metho
 
     suspend fun setDownloadProgress(name: String, downloaded: Long, size: Long) =
         dao.setDownloadProgress(name, downloaded, size)
+
+    suspend fun reclaimOrphans(from: FileStatus, to: FileStatus) =
+        dao.reclaimOrphans(from.name, to.name)
 ```
 
 - [ ] **Step 3: Build (Room compiles the new queries)**
@@ -540,6 +551,9 @@ class DownloadWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
         )
 
         val maxRetries = sl.config.config.value.maxRetries
+        // Reclaim rows a previous run left mid-download when the process was killed (no catch ran).
+        val reclaimed = sl.files.reclaimOrphans(FileStatus.DOWNLOADING, FileStatus.PENDING)
+        if (reclaimed > 0) sl.log.w("DownloadWorker", "Reclaimed $reclaimed orphaned DOWNLOADING → PENDING")
         val pending = sl.files.pendingDownloads()
         for (item in pending) {
             if (resolver.resolve(gateway) == null) {
@@ -764,9 +778,14 @@ with:
         val action = net.openid.appauth.AuthState.AuthStateAction { token, _, ex ->
             if (token != null) {
                 configRepo.saveAuthState(state.jsonSerializeString())
+                configRepo.setNeedsReauth(false)   // a successful refresh means the session is fine
                 cont.resume(token)
             } else {
-                if (ex != null) configRepo.setNeedsReauth(true)
+                // Only a genuine OAuth token error (invalid_grant / revoked) requires re-auth; a
+                // transient network failure during refresh must NOT latch the "session expired" banner.
+                if (ex != null && ex.type == net.openid.appauth.AuthorizationException.TYPE_OAUTH_TOKEN_ERROR) {
+                    configRepo.setNeedsReauth(true)
+                }
                 cont.resume(null)
             }
         }
@@ -1173,6 +1192,11 @@ class UploadWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
         val uploader = YouTubeUploader(sl.auth, sl.config, sl.log)
         val deleteLocal = sl.config.config.value.deleteAfterUpload
         val maxRetries = sl.config.config.value.maxRetries
+
+        // Reclaim rows a previous run left mid-upload when the process was killed; the persisted
+        // uploadSessionUrl then drives the resumable-session resume in uploadOne.
+        val reclaimed = sl.files.reclaimOrphans(FileStatus.UPLOADING, FileStatus.DOWNLOADED)
+        if (reclaimed > 0) sl.log.w("UploadWorker", "Reclaimed $reclaimed orphaned UPLOADING → DOWNLOADED")
 
         while (true) {
             val item = sl.files.nextToUpload() ?: break
