@@ -24,7 +24,11 @@ class YouTubeAuthManager(
         val clientId = configRepo.config.value.youtubeClientId
         val req = AuthorizationRequest.Builder(
             serviceConfig, clientId, ResponseTypeValues.CODE, redirectUri
-        ).setScope(scope).build() // AppAuth adds PKCE automatically
+        )
+            .setScope(scope)
+            // access_type=offline → refresh token; prompt=consent → ensure one is (re)issued on re-auth.
+            .setAdditionalParameters(mapOf("access_type" to "offline", "prompt" to "consent"))
+            .build() // AppAuth adds PKCE automatically
         return authService.getAuthorizationRequestIntent(req)
     }
 
@@ -68,9 +72,10 @@ class YouTubeAuthManager(
                 configRepo.setNeedsReauth(false)   // a successful refresh means the session is fine
                 cont.resume(token)
             } else {
-                // Only a genuine OAuth token error (invalid_grant / revoked) requires re-auth; a
-                // transient network failure during refresh must NOT latch the "session expired" banner.
-                if (ex != null && ex.type == net.openid.appauth.AuthorizationException.TYPE_OAUTH_TOKEN_ERROR) {
+                // Genuine auth failure — token revoked/invalid_grant (TYPE_OAUTH_TOKEN_ERROR) OR no
+                // refresh token available (TYPE_OAUTH_AUTHORIZATION_ERROR, synthesized locally) — needs
+                // re-auth. Transient network/IO/JSON failures are TYPE_GENERAL_ERROR and must NOT latch.
+                if (ex != null && ex.type != net.openid.appauth.AuthorizationException.TYPE_GENERAL_ERROR) {
                     configRepo.setNeedsReauth(true)
                 }
                 cont.resume(null)
