@@ -47,4 +47,12 @@ interface VideoFileDao {
             "updatedAtEpoch = :ts WHERE fileName = :name"
     )
     suspend fun setDownloadProgress(name: String, downloaded: Long, size: Long, ts: Long = System.currentTimeMillis())
+
+    /**
+     * Reset rows stuck in a transient state after a process kill (no catch block ran). Called once
+     * at worker start; safe because each pipeline worker is unique (KEEP), so no live worker holds
+     * a row in [fromStatus]. Returns the number of rows reclaimed.
+     */
+    @Query("UPDATE video_files SET status = :toStatus, updatedAtEpoch = :ts WHERE status = :fromStatus")
+    suspend fun reclaimOrphans(fromStatus: String, toStatus: String, ts: Long = System.currentTimeMillis()): Int
 }

@@ -48,6 +48,9 @@ class DownloadWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
         )
 
         val maxRetries = sl.config.config.value.maxRetries
+        // Reclaim rows a previous run left mid-download when the process was killed (no catch ran).
+        val reclaimed = sl.files.reclaimOrphans(FileStatus.DOWNLOADING, FileStatus.PENDING)
+        if (reclaimed > 0) sl.log.w("DownloadWorker", "Reclaimed $reclaimed orphaned DOWNLOADING → PENDING")
         val pending = sl.files.pendingDownloads()
         for (item in pending) {
             if (resolver.resolve(gateway) == null) {

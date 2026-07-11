@@ -65,9 +65,14 @@ class YouTubeAuthManager(
         val action = net.openid.appauth.AuthState.AuthStateAction { token, _, ex ->
             if (token != null) {
                 configRepo.saveAuthState(state.jsonSerializeString())
+                configRepo.setNeedsReauth(false)   // a successful refresh means the session is fine
                 cont.resume(token)
             } else {
-                if (ex != null) configRepo.setNeedsReauth(true)
+                // Only a genuine OAuth token error (invalid_grant / revoked) requires re-auth; a
+                // transient network failure during refresh must NOT latch the "session expired" banner.
+                if (ex != null && ex.type == net.openid.appauth.AuthorizationException.TYPE_OAUTH_TOKEN_ERROR) {
+                    configRepo.setNeedsReauth(true)
+                }
                 cont.resume(null)
             }
         }

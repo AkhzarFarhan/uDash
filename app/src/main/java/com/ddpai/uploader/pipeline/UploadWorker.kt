@@ -41,6 +41,11 @@ class UploadWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
         val deleteLocal = sl.config.config.value.deleteAfterUpload
         val maxRetries = sl.config.config.value.maxRetries
 
+        // Reclaim rows a previous run left mid-upload when the process was killed; the persisted
+        // uploadSessionUrl then drives the resumable-session resume in uploadOne.
+        val reclaimed = sl.files.reclaimOrphans(FileStatus.UPLOADING, FileStatus.DOWNLOADED)
+        if (reclaimed > 0) sl.log.w("UploadWorker", "Reclaimed $reclaimed orphaned UPLOADING → DOWNLOADED")
+
         while (true) {
             val item = sl.files.nextToUpload() ?: break
             val file = sl.files.fileFor(item.fileName)

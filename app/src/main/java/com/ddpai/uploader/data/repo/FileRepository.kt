@@ -45,6 +45,9 @@ class FileRepository(
     suspend fun setDownloadProgress(name: String, downloaded: Long, size: Long) =
         dao.setDownloadProgress(name, downloaded, size)
 
+    suspend fun reclaimOrphans(from: FileStatus, to: FileStatus) =
+        dao.reclaimOrphans(from.name, to.name)
+
     fun fileFor(name: String) = File(storageDir, name)
 
     suspend fun markCorruptAndReset(name: String, reason: String) {

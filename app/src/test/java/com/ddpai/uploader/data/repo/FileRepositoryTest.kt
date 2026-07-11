@@ -44,6 +44,7 @@ class FileRepositoryTest {
             override suspend fun setStatus(name: String, status: String, ts: Long) {}
             override suspend fun recordRetry(name: String, retryStatus: String, error: String, ts: Long) {}
             override suspend fun setDownloadProgress(name: String, downloaded: Long, size: Long, ts: Long) {}
+            override suspend fun reclaimOrphans(fromStatus: String, toStatus: String, ts: Long): Int = 0
         }
 
         val repository = FileRepository(mockDao, mockLog, File("."))
