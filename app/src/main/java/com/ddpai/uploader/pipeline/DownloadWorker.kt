@@ -71,6 +71,11 @@ class DownloadWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
                 val verdict = verifier.verify(target)
                 if (!verdict.valid) {
                     sl.files.markCorruptAndReset(item.fileName, verdict.reason)
+                    val cur = sl.files.get(item.fileName)
+                    if (cur != null && RetryPolicy.shouldFail(cur.retryCount, maxRetries)) {
+                        sl.files.setStatus(item.fileName, FileStatus.FAILED)
+                        sl.log.w("DownloadWorker", "${item.fileName} repeatedly corrupt → FAILED", item.fileName)
+                    }
                     continue
                 }
                 sl.files.update(

@@ -21,8 +21,11 @@ class ServiceLocator private constructor(context: Context) {
     val notifications = NotificationHelper
     val progress = ProgressBus
     val activeNetworkType = kotlinx.coroutines.flow.MutableStateFlow(com.ddpai.uploader.network.NetworkType.NONE)
+    private val ioErrors = kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
+        log.e("ServiceLocator", "Background IO task failed: ${e.message}")
+    }
     val io = kotlinx.coroutines.CoroutineScope(
-        kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO
+        kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO + ioErrors
     )
 
     @Volatile var currentDashcamNetwork: Network? = null
