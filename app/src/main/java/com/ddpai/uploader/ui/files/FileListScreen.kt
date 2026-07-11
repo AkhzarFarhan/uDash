@@ -113,7 +113,7 @@ fun VideoFileCard(
 
             if (file.status == FileStatus.DOWNLOADING.name || file.status == FileStatus.UPLOADING.name) {
                 val pct = if (file.sizeBytes > 0) file.downloadedBytes.toFloat() / file.sizeBytes.toFloat() else 0f
-                LinearProgressIndicator(progress = pct, modifier = Modifier.fillMaxWidth())
+                LinearProgressIndicator(progress = { pct }, modifier = Modifier.fillMaxWidth())
             }
 
             file.errorMessage?.let { error ->

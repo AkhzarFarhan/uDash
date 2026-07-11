@@ -21,7 +21,9 @@ data class DashUiState(
     val failed: Int = 0,
     val isAuthorized: Boolean = false,
     val isConfigured: Boolean = false,
-    val recentLogs: List<LogEntity> = emptyList()
+    val recentLogs: List<LogEntity> = emptyList(),
+    val quotaPausedUntil: Long = 0L,
+    val needsReauth: Boolean = false
 )
 
 class DashboardViewModel(application: Application) : AndroidViewModel(application) {
@@ -35,7 +37,8 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         sl.files.observeCount(FileStatus.UPLOADING),
         sl.files.observeCount(FileStatus.UPLOADED),
         sl.files.observeCount(FileStatus.FAILED),
-        sl.log.observe(8)
+        sl.log.observe(8),
+        sl.config.runtimeState
     ) { args ->
         val networkType = args[0] as NetworkType
         val progress = args[1] as ProgressBus.Progress?
@@ -46,6 +49,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         val failed = args[6] as Int
         @Suppress("UNCHECKED_CAST")
         val recentLogs = args[7] as List<LogEntity>
+        val runtime = args[8] as com.ddpai.uploader.data.config.ConfigRepository.RuntimeState
 
         DashUiState(
             networkType = networkType,
@@ -57,7 +61,9 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             failed = failed,
             isAuthorized = sl.auth.isAuthorized(),
             isConfigured = sl.config.isConfigured(),
-            recentLogs = recentLogs
+            recentLogs = recentLogs,
+            quotaPausedUntil = runtime.quotaPausedUntil,
+            needsReauth = runtime.needsReauth
         )
     }.stateIn(
         scope = viewModelScope,
