@@ -16,12 +16,13 @@ object PipelineScheduler {
             .enqueueUniqueWork(DOWNLOAD_WORK, ExistingWorkPolicy.KEEP, req)
     }
 
-    fun enqueueUpload(context: Context) {
+    fun enqueueUpload(context: Context, initialDelayMillis: Long = 0L) {
         val constraints = Constraints.Builder()
-            .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
+            .setRequiredNetworkType(androidx.work.NetworkType.UNMETERED)
             .build()
         val req = OneTimeWorkRequestBuilder<UploadWorker>()
             .setConstraints(constraints)
+            .setInitialDelay(initialDelayMillis, TimeUnit.MILLISECONDS)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
             .build()
         WorkManager.getInstance(context)
