@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import androidx.work.CoroutineWorker
+import androidx.work.ExistingWorkPolicy
 import androidx.work.WorkerParameters
 import com.ddpai.uploader.data.model.FileStatus
 import com.ddpai.uploader.di.ServiceLocator
@@ -59,7 +60,11 @@ class UploadWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
                     sl.config.setQuotaPausedUntil(until)
                     sl.files.setStatus(item.fileName, FileStatus.DOWNLOADED)
                     sl.log.w("UploadWorker", "Quota exceeded; pausing uploads until $until", item.fileName)
-                    PipelineScheduler.enqueueUpload(applicationContext, until - System.currentTimeMillis())
+                    PipelineScheduler.enqueueUpload(
+                        applicationContext,
+                        until - System.currentTimeMillis(),
+                        ExistingWorkPolicy.REPLACE
+                    )
                     return Result.success()
                 }
                 if (e.code == 401) {
