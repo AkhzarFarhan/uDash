@@ -840,7 +840,7 @@ class SyncController(private val context: Context, private val sl: ServiceLocato
     fun classifyAndEnqueue() {
         val cm = context.getSystemService(ConnectivityManager::class.java)
         val gateway = sl.config.config.value.dashcamGateway
-        val dashcam = DashcamNetworkResolver(cm).resolve(gateway)
+        val dashcam = DashcamNetworkResolver(cm, context).resolve(gateway)
         if (dashcam != null) {
             sl.currentDashcamNetwork = dashcam
             if (sl.config.config.value.wifiAutoStart) PipelineScheduler.enqueueDownload(context)

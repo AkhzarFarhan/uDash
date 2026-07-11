@@ -170,27 +170,49 @@ git commit -m "fix: allow cleartext to any host so editable gateway keeps workin
 **Interfaces:**
 - Consumes: nothing.
 - Produces:
-  - `object NetworkGateway { fun extract(cm: ConnectivityManager, network: Network): String? }`
-  - `class DashcamNetworkResolver(cm: ConnectivityManager) { fun resolve(configuredGateway: String): Network? }`
+  - `object NetworkGateway { fun extract(cm: ConnectivityManager, network: Network, context: Context? = null): String? }` — route-based, with a legacy DhcpInfo fallback applied only when a `context` is supplied AND `network` is the active network (preserves the original's dual detection; safe while iterating).
+  - `class DashcamNetworkResolver(cm: ConnectivityManager, context: Context) { fun resolve(configuredGateway: String): Network? }`
 
-- [ ] **Step 1: Create `NetworkGateway.kt` (shared gateway extraction)**
+- [ ] **Step 1: Create `NetworkGateway.kt` (shared gateway extraction, route + DhcpInfo fallback)**
 
 ```kotlin
 package com.ddpai.uploader.network
 
+import android.content.Context
 import android.net.ConnectivityManager
-import android.net.LinkProperties
 import android.net.Network
+import android.net.wifi.WifiManager
 import java.net.Inet4Address
+import java.util.Locale
 
-/** Extracts the IPv4 default-route gateway (dotted string) for a given network link. */
+/**
+ * Extracts the IPv4 gateway (dotted string) for a link. Primary method: the default-route
+ * gateway from LinkProperties. Fallback (matching the original NetworkMonitor behavior): the
+ * legacy WifiManager.dhcpInfo gateway — but since DhcpInfo reflects the ACTIVE Wi-Fi only, it is
+ * applied solely when a [context] is provided and [network] is the active network, so callers
+ * that iterate multiple networks (DashcamNetworkResolver) can never false-match on it.
+ */
 object NetworkGateway {
-    fun extract(cm: ConnectivityManager, network: Network): String? {
-        val lp: LinkProperties = cm.getLinkProperties(network) ?: return null
-        lp.routes.forEach { r ->
+    fun extract(cm: ConnectivityManager, network: Network, context: Context? = null): String? {
+        cm.getLinkProperties(network)?.routes?.forEach { r ->
             val gw = r.gateway
             if (r.isDefaultRoute && gw is Inet4Address) {
                 return gw.hostAddress
+            }
+        }
+        if (context != null && cm.activeNetwork == network) {
+            try {
+                val wifi = context.getSystemService(WifiManager::class.java)
+                @Suppress("DEPRECATION")
+                val g = wifi?.dhcpInfo?.gateway ?: return null
+                if (g != 0) {
+                    return String.format(
+                        Locale.US, "%d.%d.%d.%d",
+                        g and 0xff, g shr 8 and 0xff, g shr 16 and 0xff, g shr 24 and 0xff
+                    )
+                }
+            } catch (e: Exception) {
+                return null
             }
         }
         return null
@@ -203,6 +225,7 @@ object NetworkGateway {
 ```kotlin
 package com.ddpai.uploader.network
 
+import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -210,14 +233,18 @@ import android.net.NetworkCapabilities
 /**
  * Finds the currently-connected Wi-Fi [Network] whose IPv4 gateway matches the dashcam gateway,
  * without relying on any previously-registered callback. Safe to call from a Worker after process
- * restart.
+ * restart. Passes [context] to NetworkGateway so the DhcpInfo fallback covers APs that expose no
+ * default route (the fallback self-limits to the active network).
  */
-class DashcamNetworkResolver(private val cm: ConnectivityManager) {
+class DashcamNetworkResolver(
+    private val cm: ConnectivityManager,
+    private val context: Context
+) {
     fun resolve(configuredGateway: String): Network? {
         for (n in cm.allNetworks) {
             val caps = cm.getNetworkCapabilities(n) ?: continue
             if (!caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) continue
-            if (NetworkGateway.extract(cm, n) == configuredGateway) return n
+            if (NetworkGateway.extract(cm, n, context) == configuredGateway) return n
         }
         return null
     }
@@ -230,11 +257,11 @@ In `app/src/main/java/com/ddpai/uploader/network/NetworkMonitor.kt`, replace the
 ```kotlin
         val gatewayIp = extractGateway(lp)
 ```
-to:
+to (passing `context` so the DhcpInfo fallback is preserved for the active network):
 ```kotlin
-        val gatewayIp = NetworkGateway.extract(cm, network)
+        val gatewayIp = NetworkGateway.extract(cm, network, context)
 ```
-Then delete the private `extractGateway(lp: LinkProperties?)` function entirely, and remove the now-unused imports `android.net.wifi.WifiManager` and `android.net.LinkProperties` if the compiler flags them. Keep the `lp` local only if still referenced; if not, delete `val lp = cm.getLinkProperties(network)`.
+Then delete the private `extractGateway(lp: LinkProperties?)` function entirely. Remove imports only if the compiler flags them unused: `android.net.wifi.WifiManager` becomes unused here (its logic moved to `NetworkGateway`) and should be removed; `android.net.LinkProperties` is still referenced by `onLinkPropertiesChanged`'s parameter, so keep it. If `val lp = cm.getLinkProperties(network)` in `evaluate` is now unused, delete it.
 
 - [ ] **Step 4: Build**
 
@@ -452,7 +479,8 @@ class DownloadWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
 
         val gateway = sl.config.config.value.dashcamGateway
         val cm = applicationContext.getSystemService(ConnectivityManager::class.java)
-        val network = DashcamNetworkResolver(cm).resolve(gateway) ?: sl.currentDashcamNetwork
+        val resolver = DashcamNetworkResolver(cm, applicationContext)
+        val network = resolver.resolve(gateway) ?: sl.currentDashcamNetwork
         if (network == null) {
             sl.log.w("DownloadWorker", "Dashcam network not resolvable (attempt $runAttemptCount)")
             return if (runAttemptCount >= 5) Result.success() else Result.retry()
@@ -478,7 +506,7 @@ class DownloadWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
         val maxRetries = sl.config.config.value.maxRetries
         val pending = sl.files.pendingDownloads()
         for (item in pending) {
-            if (DashcamNetworkResolver(cm).resolve(gateway) == null) {
+            if (resolver.resolve(gateway) == null) {
                 sl.log.w("DownloadWorker", "Lost dashcam AP; stopping cycle")
                 break
             }
@@ -1188,7 +1216,7 @@ class UploadWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
         if (!caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) return false
         if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) return false
         val gateway = sl.config.config.value.dashcamGateway
-        return DashcamNetworkResolver(cm).resolve(gateway) != active
+        return DashcamNetworkResolver(cm, applicationContext).resolve(gateway) != active
     }
 
     private suspend fun promoteToForeground() {
