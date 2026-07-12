@@ -771,8 +771,12 @@ to:
             serviceConfig, clientId, ResponseTypeValues.CODE, redirectUri
         )
             .setScope(scope)
-            // access_type=offline → refresh token; prompt=consent → ensure one is (re)issued on re-auth.
-            .setAdditionalParameters(mapOf("access_type" to "offline", "prompt" to "consent"))
+            // prompt=consent is a first-class OAuth param — it MUST go through setPromptValues, not
+            // setAdditionalParameters (AppAuth throws IllegalArgumentException otherwise). It forces
+            // Google to (re)issue a refresh token.
+            .setPromptValues("consent")
+            // access_type=offline (a Google extension) requests the refresh token; valid as additional.
+            .setAdditionalParameters(mapOf("access_type" to "offline"))
             .build() // AppAuth adds PKCE automatically
 ```
 

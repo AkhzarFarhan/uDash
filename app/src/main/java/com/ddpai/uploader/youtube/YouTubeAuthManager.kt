@@ -26,8 +26,11 @@ class YouTubeAuthManager(
             serviceConfig, clientId, ResponseTypeValues.CODE, redirectUri
         )
             .setScope(scope)
-            // access_type=offline → refresh token; prompt=consent → ensure one is (re)issued on re-auth.
-            .setAdditionalParameters(mapOf("access_type" to "offline", "prompt" to "consent"))
+            // prompt=consent forces Google to (re)issue a refresh token; it is a first-class OAuth
+            // param, so it MUST go through setPromptValues, not setAdditionalParameters (AppAuth rejects it there).
+            .setPromptValues("consent")
+            // access_type=offline (a Google extension) requests the refresh token; valid as an additional param.
+            .setAdditionalParameters(mapOf("access_type" to "offline"))
             .build() // AppAuth adds PKCE automatically
         return authService.getAuthorizationRequestIntent(req)
     }
