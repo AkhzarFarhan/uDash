@@ -224,6 +224,30 @@ fun ConfigScreen(vm: ConfigViewModel = viewModel()) {
                         modifier = Modifier.width(150.dp)
                     )
                 }
+
+                var syncMode by remember(configState.syncMode) { mutableStateOf(configState.syncMode) }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Persistent background watcher")
+                        Text(
+                            if (syncMode == "PERSISTENT") "On: instant, shows a permanent notification"
+                            else "Off: battery-saver 15-min checks",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = syncMode == "PERSISTENT",
+                        onCheckedChange = {
+                            syncMode = if (it) "PERSISTENT" else "BATTERY_SAVER"
+                            vm.applySyncMode(syncMode)
+                        }
+                    )
+                }
             }
         }
 

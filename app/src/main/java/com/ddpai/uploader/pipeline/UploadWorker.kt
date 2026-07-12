@@ -98,7 +98,7 @@ class UploadWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
 
         while (true) {
             if (sessionUri.isNullOrBlank()) {
-                sessionUri = uploader.initiate(file, item.fileName.removeSuffix(".mp4"))
+                sessionUri = uploader.initiate(file, com.ddpai.uploader.youtube.UploadTitle.of(item))
                 sl.files.update(item.copy(uploadSessionUrl = sessionUri, status = FileStatus.UPLOADING.name))
                 item = sl.files.get(name)!!
                 sl.log.i("UploadWorker", "Initiated session for $name", name)

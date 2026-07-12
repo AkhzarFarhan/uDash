@@ -88,6 +88,12 @@ fun DashboardScreen(navController: NavController, vm: DashboardViewModel = viewM
                     Text(netText, color = netColor, style = MaterialTheme.typography.bodyLarge)
                 }
 
+                Text(
+                    "Sync mode: ${if (state.syncMode == "PERSISTENT") "Persistent watcher" else "Battery saver"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
                 state.progress?.let { progress ->
                     HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
                     Row(
@@ -138,6 +144,7 @@ fun DashboardScreen(navController: NavController, vm: DashboardViewModel = viewM
         ) {
             CounterItem(label = "Discovered", count = state.discovered, modifier = Modifier.weight(1f))
             CounterItem(label = "Downloaded", count = state.downloaded, modifier = Modifier.weight(1f))
+            CounterItem(label = "Merged", count = state.merged, modifier = Modifier.weight(1f))
             CounterItem(label = "Uploaded", count = state.uploaded, modifier = Modifier.weight(1f))
             CounterItem(label = "Failed", count = state.failed, modifier = Modifier.weight(1f))
         }

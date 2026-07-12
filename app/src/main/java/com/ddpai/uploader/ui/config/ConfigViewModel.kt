@@ -52,6 +52,19 @@ class ConfigViewModel(application: Application) : AndroidViewModel(application) 
         logger.i("ConfigVM", "Signed out from YouTube")
     }
 
+    fun applySyncMode(mode: String) {
+        val app = getApplication<Application>()
+        repo.save(config.value.copy(syncMode = mode))
+        if (mode == "BATTERY_SAVER") {
+            com.ddpai.uploader.pipeline.WatcherService.stop(app)
+            com.ddpai.uploader.pipeline.PipelineScheduler.enablePeriodicChecks(app)
+        } else {
+            com.ddpai.uploader.pipeline.PipelineScheduler.disablePeriodicChecks(app)
+            com.ddpai.uploader.pipeline.WatcherService.start(app)
+        }
+        logger.i("ConfigVM", "Sync mode → $mode")
+    }
+
     fun testConnection() {
         viewModelScope.launch {
             _testStatus.value = "Testing..."

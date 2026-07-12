@@ -32,6 +32,7 @@ class ConfigRepository(context: Context) {
             .putBoolean("wifiAutoStart", config.wifiAutoStart)
             .putString("gateway", config.dashcamGateway)
             .putInt("maxRetries", config.maxRetries)
+            .putString("syncMode", config.syncMode)
             .apply()
         _config.value = config
     }
@@ -43,7 +44,8 @@ class ConfigRepository(context: Context) {
         deleteAfterUpload = securePrefs.getBoolean("deleteAfterUpload", true),
         wifiAutoStart = securePrefs.getBoolean("wifiAutoStart", true),
         dashcamGateway = securePrefs.getString("gateway", "193.168.0.1") ?: "193.168.0.1",
-        maxRetries = securePrefs.getInt("maxRetries", 5)
+        maxRetries = securePrefs.getInt("maxRetries", 5),
+        syncMode = securePrefs.getString("syncMode", "PERSISTENT") ?: "PERSISTENT",
     )
 
     fun isConfigured(): Boolean = _config.value.youtubeClientId.isNotBlank()

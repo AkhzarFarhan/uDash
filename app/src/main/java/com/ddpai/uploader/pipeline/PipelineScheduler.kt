@@ -56,6 +56,18 @@ object PipelineScheduler {
             .enqueue()
     }
 
+    const val PERIODIC_CHECK_WORK = "ddpai_periodic_check"
+
+    fun enablePeriodicChecks(context: Context) {
+        val req = PeriodicWorkRequestBuilder<SyncCheckWorker>(15, TimeUnit.MINUTES).build()
+        WorkManager.getInstance(context)
+            .enqueueUniquePeriodicWork(PERIODIC_CHECK_WORK, ExistingPeriodicWorkPolicy.KEEP, req)
+    }
+
+    fun disablePeriodicChecks(context: Context) {
+        WorkManager.getInstance(context).cancelUniqueWork(PERIODIC_CHECK_WORK)
+    }
+
     fun cancelAll(context: Context) {
         val wm = WorkManager.getInstance(context)
         wm.cancelUniqueWork(DOWNLOAD_WORK)

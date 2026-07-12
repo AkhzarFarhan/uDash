@@ -23,7 +23,9 @@ data class DashUiState(
     val isConfigured: Boolean = false,
     val recentLogs: List<LogEntity> = emptyList(),
     val quotaPausedUntil: Long = 0L,
-    val needsReauth: Boolean = false
+    val needsReauth: Boolean = false,
+    val merged: Int = 0,
+    val syncMode: String = "PERSISTENT"
 )
 
 class DashboardViewModel(application: Application) : AndroidViewModel(application) {
@@ -38,7 +40,8 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         sl.files.observeCount(FileStatus.UPLOADED),
         sl.files.observeCount(FileStatus.FAILED),
         sl.log.observe(8),
-        sl.config.runtimeState
+        sl.config.runtimeState,
+        sl.files.observeCount(FileStatus.MERGED)
     ) { args ->
         val networkType = args[0] as NetworkType
         val progress = args[1] as ProgressBus.Progress?
@@ -50,6 +53,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         @Suppress("UNCHECKED_CAST")
         val recentLogs = args[7] as List<LogEntity>
         val runtime = args[8] as com.ddpai.uploader.data.config.ConfigRepository.RuntimeState
+        val merged = args[9] as Int
 
         DashUiState(
             networkType = networkType,
@@ -63,7 +67,9 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             isConfigured = sl.config.isConfigured(),
             recentLogs = recentLogs,
             quotaPausedUntil = runtime.quotaPausedUntil,
-            needsReauth = runtime.needsReauth
+            needsReauth = runtime.needsReauth,
+            merged = merged,
+            syncMode = sl.config.config.value.syncMode
         )
     }.stateIn(
         scope = viewModelScope,
