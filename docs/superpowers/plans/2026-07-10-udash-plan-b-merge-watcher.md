@@ -55,9 +55,9 @@ enum class FileStatus {
 
 - [ ] **Step 2: Add columns to the entity**
 
-In `app/src/main/java/com/ddpai/uploader/data/db/entity/VideoFileEntity.kt`, add two fields (after `capturedAtEpoch`):
+In `app/src/main/java/com/ddpai/uploader/data/db/entity/VideoFileEntity.kt`, add `import androidx.room.ColumnInfo` and two fields (after `capturedAtEpoch`). The `@ColumnInfo(defaultValue = ...)` on `kind` makes the entity self-describing so a fresh install and a migrated DB produce an identical column default (Room otherwise records no default on the fresh-install column):
 ```kotlin
-    val kind: String = "SEGMENT",        // SEGMENT | MERGED
+    @ColumnInfo(defaultValue = "SEGMENT") val kind: String = "SEGMENT",  // SEGMENT | MERGED
     val mergedInto: String? = null,      // for consumed segments: the merged output's fileName
 ```
 
