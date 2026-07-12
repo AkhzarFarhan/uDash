@@ -21,8 +21,26 @@ interface VideoFileDao {
     @Query("SELECT * FROM video_files WHERE status IN (:statuses) ORDER BY capturedAtEpoch ASC")
     suspend fun getByStatuses(statuses: List<String>): List<VideoFileEntity>
 
-    @Query("SELECT * FROM video_files WHERE status = 'DOWNLOADED' ORDER BY capturedAtEpoch ASC LIMIT 1")
+    @Query("SELECT * FROM video_files WHERE status = 'DOWNLOADED' AND kind = 'MERGED' ORDER BY capturedAtEpoch ASC LIMIT 1")
     suspend fun nextToUpload(): VideoFileEntity?
+
+    @Query("SELECT * FROM video_files WHERE status = 'DOWNLOADED' AND kind = 'SEGMENT' ORDER BY capturedAtEpoch ASC")
+    suspend fun downloadedSegments(): List<VideoFileEntity>
+
+    @Query("UPDATE video_files SET kind = 'MERGED', updatedAtEpoch = :ts WHERE fileName = :name")
+    suspend fun relabelAsMerged(name: String, ts: Long = System.currentTimeMillis())
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMerged(entity: VideoFileEntity)
+
+    @Query("UPDATE video_files SET status = 'MERGED', mergedInto = :output, localPath = NULL, updatedAtEpoch = :ts WHERE fileName = :name")
+    suspend fun markSegmentMerged(name: String, output: String, ts: Long = System.currentTimeMillis())
+
+    @Transaction
+    suspend fun commitMerge(output: VideoFileEntity, consumed: List<String>, ts: Long = System.currentTimeMillis()) {
+        insertMerged(output)
+        consumed.forEach { markSegmentMerged(it, output.fileName, ts) }
+    }
 
     @Query("SELECT * FROM video_files WHERE status IN ('DISCOVERED','PENDING') ORDER BY capturedAtEpoch ASC")
     suspend fun pendingDownloads(): List<VideoFileEntity>

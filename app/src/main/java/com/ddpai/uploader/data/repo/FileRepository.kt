@@ -35,6 +35,13 @@ class FileRepository(
 
     suspend fun pendingDownloads() = dao.pendingDownloads()
     suspend fun nextToUpload() = dao.nextToUpload()
+    suspend fun downloadedSegments() = dao.downloadedSegments()
+
+    suspend fun relabelAsMerged(name: String) = dao.relabelAsMerged(name)
+
+    suspend fun commitMerge(output: VideoFileEntity, consumedNames: List<String>) =
+        dao.commitMerge(output, consumedNames)
+
     suspend fun get(name: String) = dao.getByName(name)
     suspend fun update(e: VideoFileEntity) = dao.update(e.copy(updatedAtEpoch = System.currentTimeMillis()))
     suspend fun setStatus(name: String, s: FileStatus) = dao.setStatus(name, s.name)
