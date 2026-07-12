@@ -18,27 +18,32 @@ class Mp4Merger {
         data class Error(val message: String) : Outcome
     }
 
-    private data class TrackFormat(val mime: String, val width: Int, val height: Int, val sampleRate: Int, val channels: Int)
-
     fun merge(inputs: List<File>, output: File): Outcome {
         if (inputs.isEmpty()) return Outcome.Error("no inputs")
         var muxer: MediaMuxer? = null
+        var started = false
         try {
             muxer = MediaMuxer(output.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-            // Establish tracks from the first segment.
+            // Establish tracks from the first segment; also find the largest declared sample size.
             val head = MediaExtractor().apply { setDataSource(inputs[0].absolutePath) }
-            val headFormats = ArrayList<MediaFormat>()
             val muxTrackIndex = IntArray(head.trackCount)
+            val headSignature = ArrayList<String>(head.trackCount)
+            var maxInputSize = 0
             for (t in 0 until head.trackCount) {
                 val fmt = head.getTrackFormat(t)
-                headFormats.add(fmt)
+                headSignature.add(fmt.signature())
                 muxTrackIndex[t] = muxer.addTrack(fmt)
+                if (fmt.containsKey(MediaFormat.KEY_MAX_INPUT_SIZE)) {
+                    maxInputSize = maxOf(maxInputSize, fmt.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE))
+                }
             }
-            val headSignature = headFormats.map { it.signature() }
             head.release()
 
             muxer.start()
-            val buffer = ByteBuffer.allocate(1 shl 20) // 1 MB sample buffer
+            started = true
+            // Size the sample buffer from the tracks' declared max input size (with a generous floor),
+            // so a large keyframe can never overflow and silently truncate a track.
+            val buffer = ByteBuffer.allocate(maxOf(maxInputSize, 4 * 1024 * 1024))
             var timeOffsetUs = 0L
 
             for ((index, input) in inputs.withIndex()) {
@@ -49,7 +54,7 @@ class Mp4Merger {
                     ) {
                         return Outcome.FormatMismatch(index)
                     }
-                    var maxPtsThisSegment = 0L
+                    var maxPtsThisSegment = timeOffsetUs
                     for (t in 0 until extractor.trackCount) {
                         extractor.selectTrack(t)
                         val bufferInfo = MediaCodec.BufferInfo()
@@ -64,17 +69,20 @@ class Mp4Merger {
                         }
                         extractor.unselectTrack(t)
                     }
-                    // Next segment's timestamps start after this one (+ ~1 frame at 30fps).
+                    // Next segment starts after this one (+ ~1 frame at 30fps); never regress the offset.
                     timeOffsetUs = maxPtsThisSegment + 33_333L
                 } finally {
                     extractor.release()
                 }
             }
+            // Finalize explicitly so a stop() failure (e.g. moov not written) surfaces as Error, not Success.
+            muxer.stop()
+            started = false
             return Outcome.Success
         } catch (e: Exception) {
             return Outcome.Error(e.message ?: e.javaClass.simpleName)
         } finally {
-            try { muxer?.stop() } catch (_: Exception) {}
+            if (started) { try { muxer?.stop() } catch (_: Exception) {} }
             try { muxer?.release() } catch (_: Exception) {}
         }
     }
