@@ -24,7 +24,11 @@ class YouTubeAuthManager(
         val clientId = configRepo.config.value.youtubeClientId
         val req = AuthorizationRequest.Builder(
             serviceConfig, clientId, ResponseTypeValues.CODE, redirectUri
-        ).setScope(scope).build() // AppAuth adds PKCE automatically
+        )
+            .setScope(scope)
+            // access_type=offline → refresh token; prompt=consent → ensure one is (re)issued on re-auth.
+            .setAdditionalParameters(mapOf("access_type" to "offline", "prompt" to "consent"))
+            .build() // AppAuth adds PKCE automatically
         return authService.getAuthorizationRequestIntent(req)
     }
 
@@ -35,14 +39,23 @@ class YouTubeAuthManager(
             return@suspendCancellableCoroutine
         }
         val tokenReq = resp.createTokenExchangeRequest()
-        authService.performTokenRequest(tokenReq) { tokenResp, tokenEx ->
+        val secret = configRepo.config.value.youtubeClientSecret
+        // Declared as the SAM interface type (NOT a function-typed val) so it can be passed to
+        // both Java overloads of performTokenRequest — Kotlin SAM conversion only applies here.
+        val onToken = AuthorizationService.TokenResponseCallback { tokenResp, tokenEx ->
             if (tokenResp != null) {
                 val authState = AuthState(resp, tokenResp, tokenEx)
                 configRepo.saveAuthState(authState.jsonSerializeString())
+                configRepo.setNeedsReauth(false)
                 cont.resume(true)
             } else {
                 cont.resume(false)
             }
+        }
+        if (secret.isNotBlank()) {
+            authService.performTokenRequest(tokenReq, ClientSecretPost(secret), onToken)
+        } else {
+            authService.performTokenRequest(tokenReq, onToken)
         }
     }
 
@@ -52,13 +65,30 @@ class YouTubeAuthManager(
             return@suspendCancellableCoroutine
         }
         val state = AuthState.jsonDeserialize(json)
-        state.performActionWithFreshTokens(authService) { token, _, _ ->
+        val secret = configRepo.config.value.youtubeClientSecret
+        val action = net.openid.appauth.AuthState.AuthStateAction { token, _, ex ->
             if (token != null) {
                 configRepo.saveAuthState(state.jsonSerializeString())
+                configRepo.setNeedsReauth(false)   // a successful refresh means the session is fine
                 cont.resume(token)
             } else {
+                // Genuine auth failure — token revoked/invalid_grant (TYPE_OAUTH_TOKEN_ERROR) OR no
+                // refresh token available (TYPE_OAUTH_AUTHORIZATION_ERROR, synthesized locally) — needs
+                // re-auth. Transient network/IO/JSON failures are TYPE_GENERAL_ERROR and must NOT latch.
+                if (ex != null && ex.type != net.openid.appauth.AuthorizationException.TYPE_GENERAL_ERROR) {
+                    configRepo.setNeedsReauth(true)
+                }
                 cont.resume(null)
             }
+        }
+        if (secret.isNotBlank()) {
+            state.performActionWithFreshTokens(
+                authService,
+                net.openid.appauth.ClientSecretPost(secret),
+                action
+            )
+        } else {
+            state.performActionWithFreshTokens(authService, action)
         }
     }
 

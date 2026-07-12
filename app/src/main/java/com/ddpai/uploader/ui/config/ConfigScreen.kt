@@ -9,14 +9,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ddpai.uploader.data.config.AppConfig
+import com.ddpai.uploader.ui.theme.MonospaceFamily
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -143,7 +147,9 @@ fun ConfigScreen(vm: ConfigViewModel = viewModel()) {
                             readOnly = true,
                             label = { Text("Upload Privacy") },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = privacyExpanded) },
-                            modifier = Modifier.menuAnchor().fillMaxWidth()
+                            modifier = Modifier
+                                .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                                .fillMaxWidth()
                         )
                         ExposedDropdownMenu(
                             expanded = privacyExpanded,
@@ -218,6 +224,30 @@ fun ConfigScreen(vm: ConfigViewModel = viewModel()) {
                         modifier = Modifier.width(150.dp)
                     )
                 }
+
+                var syncMode by remember(configState.syncMode) { mutableStateOf(configState.syncMode) }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Persistent background watcher")
+                        Text(
+                            if (syncMode == "PERSISTENT") "On: instant, shows a permanent notification"
+                            else "Off: battery-saver 15-min checks",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = syncMode == "PERSISTENT",
+                        onCheckedChange = {
+                            syncMode = if (it) "PERSISTENT" else "BATTERY_SAVER"
+                            vm.applySyncMode(syncMode)
+                        }
+                    )
+                }
             }
         }
 
@@ -287,6 +317,36 @@ fun ConfigScreen(vm: ConfigViewModel = viewModel()) {
             )
         }
 
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            )
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Register this app (Android OAuth client)", style = MaterialTheme.typography.titleMedium)
+                val clip = LocalClipboardManager.current
+                Text("Package name", style = MaterialTheme.typography.labelSmall)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(vm.packageName, style = MaterialTheme.typography.bodySmall.copy(fontFamily = MonospaceFamily))
+                    TextButton(onClick = { clip.setText(AnnotatedString(vm.packageName)) }) { Text("Copy") }
+                }
+                Text("Signing SHA-1", style = MaterialTheme.typography.labelSmall)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(vm.signingSha1, style = MaterialTheme.typography.bodySmall.copy(fontFamily = MonospaceFamily))
+                    TextButton(onClick = { clip.setText(AnnotatedString(vm.signingSha1)) }) { Text("Copy") }
+                }
+            }
+        }
+
         // Google Cloud setup guide
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -299,10 +359,14 @@ fun ConfigScreen(vm: ConfigViewModel = viewModel()) {
                 )
                 Text(
                     text = "1. Create a project at console.cloud.google.com.\n" +
-                            "2. Enable YouTube Data API v3.\n" +
-                            "3. Configure OAuth consent screen: External type, add your email as a test user, add scope: .../auth/youtube.upload.\n" +
-                            "4. Create OAuth client ID -> type: Web or Desktop application.\n" +
-                            "5. Copy Client ID here, set redirect URI in Google Console to: com.ddpai.uploader:/oauth2redirect.",
+                        "2. Enable YouTube Data API v3.\n" +
+                        "3. OAuth consent screen: External; add your Google account as a test user; " +
+                        "scope https://www.googleapis.com/auth/youtube.upload.\n" +
+                        "4. Create OAuth client ID → type Android. Use the package name and SHA-1 below. " +
+                        "Android clients need NO client secret (leave it blank).\n" +
+                        "5. Paste the Client ID above. Redirect URI is handled by the app " +
+                        "(com.ddpai.uploader:/oauth2redirect).\n" +
+                        "Fallback: a Web/Desktop client also works — paste both Client ID and Secret.",
                     style = MaterialTheme.typography.bodySmall
                 )
             }

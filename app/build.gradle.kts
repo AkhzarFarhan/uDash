@@ -62,20 +62,12 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
 
-    implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.security.crypto)
 
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.ui)
 
     implementation(libs.appauth)
-    implementation(libs.google.api.client.android)
-    implementation(libs.google.youtube)
-    implementation(libs.google.http.gson)
-
-    implementation(libs.ffmpeg.kit)
-    implementation(libs.coil.compose)
-    implementation(libs.accompanist.permissions)
 
     testImplementation(libs.junit)
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")

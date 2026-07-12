@@ -6,7 +6,6 @@ import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
-import android.net.wifi.WifiManager
 import com.ddpai.uploader.data.config.ConfigRepository
 
 class NetworkMonitor(
@@ -42,33 +41,13 @@ class NetworkMonitor(
             onNetwork(NetworkType.OTHER, null)
             return
         }
-        val lp = cm.getLinkProperties(network)
         val gatewayConfigured = configRepo.config.value.dashcamGateway
-        val gatewayIp = extractGateway(lp)
+        val gatewayIp = NetworkGateway.extract(cm, network, context)
         val type = when {
             gatewayIp == gatewayConfigured -> NetworkType.DASHCAM_AP
             caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) -> NetworkType.HOME_WIFI
             else -> NetworkType.OTHER
         }
         onNetwork(type, network)
-    }
-
-    private fun extractGateway(lp: LinkProperties?): String? {
-        lp ?: return null
-        lp.routes.forEach { r ->
-            val gw = r.gateway
-            if (r.isDefaultRoute && gw is java.net.Inet4Address) {
-                return gw.hostAddress
-            }
-        }
-        return try {
-            val wifi = context.getSystemService(WifiManager::class.java)
-            @Suppress("DEPRECATION")
-            val g = wifi.dhcpInfo?.gateway ?: return null
-            if (g == 0) null else String.format(
-                java.util.Locale.US,
-                "%d.%d.%d.%d", g and 0xff, g shr 8 and 0xff, g shr 16 and 0xff, g shr 24 and 0xff
-            )
-        } catch (e: Exception) { null }
     }
 }

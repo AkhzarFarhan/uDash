@@ -16,6 +16,8 @@ import okhttp3.Request
 
 class ConfigViewModel(application: Application) : AndroidViewModel(application) {
     private val sl = ServiceLocator.get(application)
+    val packageName: String = com.ddpai.uploader.util.SigningInfo.packageName(application)
+    val signingSha1: String = com.ddpai.uploader.util.SigningInfo.signingSha1(application)
     private val repo = sl.config
     val auth = sl.auth
     private val logger = sl.log
@@ -48,6 +50,19 @@ class ConfigViewModel(application: Application) : AndroidViewModel(application) 
         auth.signOut()
         _isAuthorized.value = false
         logger.i("ConfigVM", "Signed out from YouTube")
+    }
+
+    fun applySyncMode(mode: String) {
+        val app = getApplication<Application>()
+        repo.save(config.value.copy(syncMode = mode))
+        if (mode == "BATTERY_SAVER") {
+            com.ddpai.uploader.pipeline.WatcherService.stop(app)
+            com.ddpai.uploader.pipeline.PipelineScheduler.enablePeriodicChecks(app)
+        } else {
+            com.ddpai.uploader.pipeline.PipelineScheduler.disablePeriodicChecks(app)
+            com.ddpai.uploader.pipeline.WatcherService.start(app)
+        }
+        logger.i("ConfigVM", "Sync mode → $mode")
     }
 
     fun testConnection() {

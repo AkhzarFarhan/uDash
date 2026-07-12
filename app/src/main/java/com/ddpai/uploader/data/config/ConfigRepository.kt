@@ -32,6 +32,7 @@ class ConfigRepository(context: Context) {
             .putBoolean("wifiAutoStart", config.wifiAutoStart)
             .putString("gateway", config.dashcamGateway)
             .putInt("maxRetries", config.maxRetries)
+            .putString("syncMode", config.syncMode)
             .apply()
         _config.value = config
     }
@@ -43,7 +44,8 @@ class ConfigRepository(context: Context) {
         deleteAfterUpload = securePrefs.getBoolean("deleteAfterUpload", true),
         wifiAutoStart = securePrefs.getBoolean("wifiAutoStart", true),
         dashcamGateway = securePrefs.getString("gateway", "193.168.0.1") ?: "193.168.0.1",
-        maxRetries = securePrefs.getInt("maxRetries", 5)
+        maxRetries = securePrefs.getInt("maxRetries", 5),
+        syncMode = securePrefs.getString("syncMode", "PERSISTENT") ?: "PERSISTENT",
     )
 
     fun isConfigured(): Boolean = _config.value.youtubeClientId.isNotBlank()
@@ -58,4 +60,29 @@ class ConfigRepository(context: Context) {
     fun clearAuthState() {
         securePrefs.edit().remove("authState").apply()
     }
+
+    data class RuntimeState(val quotaPausedUntil: Long = 0L, val needsReauth: Boolean = false)
+
+    private val _runtime = kotlinx.coroutines.flow.MutableStateFlow(loadRuntime())
+    val runtimeState: kotlinx.coroutines.flow.StateFlow<RuntimeState> =
+        _runtime.asStateFlow()
+
+    private fun loadRuntime() = RuntimeState(
+        quotaPausedUntil = securePrefs.getLong("quotaPausedUntil", 0L),
+        needsReauth = securePrefs.getBoolean("needsReauth", false)
+    )
+
+    fun setQuotaPausedUntil(ts: Long) {
+        securePrefs.edit().putLong("quotaPausedUntil", ts).apply()
+        _runtime.value = _runtime.value.copy(quotaPausedUntil = ts)
+    }
+
+    fun getQuotaPausedUntil(): Long = _runtime.value.quotaPausedUntil
+
+    fun setNeedsReauth(v: Boolean) {
+        securePrefs.edit().putBoolean("needsReauth", v).apply()
+        _runtime.value = _runtime.value.copy(needsReauth = v)
+    }
+
+    fun getNeedsReauth(): Boolean = _runtime.value.needsReauth
 }

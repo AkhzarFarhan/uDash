@@ -20,7 +20,7 @@ fun LogConsoleScreen(vm: LogConsoleViewModel = viewModel()) {
     val filterLevel by vm.filterLevel.collectAsState()
     val dateFormat = remember { SimpleDateFormat("HH:mm:ss.SSS", Locale.US) }
 
-    val levels = listOf(null, "DEBUG", "INFO", "WARN", "ERROR")
+    val levels = listOf(null, "DEBUG", "INFO", "WARN", "ERROR", "EXTREME")
 
     Column(
         modifier = Modifier

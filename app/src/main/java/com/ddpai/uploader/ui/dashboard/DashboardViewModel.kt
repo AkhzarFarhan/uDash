@@ -21,7 +21,11 @@ data class DashUiState(
     val failed: Int = 0,
     val isAuthorized: Boolean = false,
     val isConfigured: Boolean = false,
-    val recentLogs: List<LogEntity> = emptyList()
+    val recentLogs: List<LogEntity> = emptyList(),
+    val quotaPausedUntil: Long = 0L,
+    val needsReauth: Boolean = false,
+    val merged: Int = 0,
+    val syncMode: String = "PERSISTENT"
 )
 
 class DashboardViewModel(application: Application) : AndroidViewModel(application) {
@@ -35,7 +39,9 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         sl.files.observeCount(FileStatus.UPLOADING),
         sl.files.observeCount(FileStatus.UPLOADED),
         sl.files.observeCount(FileStatus.FAILED),
-        sl.log.observe(8)
+        sl.log.observe(8),
+        sl.config.runtimeState,
+        sl.files.observeCount(FileStatus.MERGED)
     ) { args ->
         val networkType = args[0] as NetworkType
         val progress = args[1] as ProgressBus.Progress?
@@ -46,6 +52,8 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         val failed = args[6] as Int
         @Suppress("UNCHECKED_CAST")
         val recentLogs = args[7] as List<LogEntity>
+        val runtime = args[8] as com.ddpai.uploader.data.config.ConfigRepository.RuntimeState
+        val merged = args[9] as Int
 
         DashUiState(
             networkType = networkType,
@@ -57,7 +65,11 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             failed = failed,
             isAuthorized = sl.auth.isAuthorized(),
             isConfigured = sl.config.isConfigured(),
-            recentLogs = recentLogs
+            recentLogs = recentLogs,
+            quotaPausedUntil = runtime.quotaPausedUntil,
+            needsReauth = runtime.needsReauth,
+            merged = merged,
+            syncMode = sl.config.config.value.syncMode
         )
     }.stateIn(
         scope = viewModelScope,
@@ -70,6 +82,6 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun uploadNow() {
-        PipelineScheduler.enqueueUpload(getApplication())
+        PipelineScheduler.enqueueMergeThenUpload(getApplication())
     }
 }

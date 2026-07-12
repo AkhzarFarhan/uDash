@@ -103,6 +103,12 @@ fun VideoFileCard(
 
             Text("Captured At: $dateStr", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
+            if (file.kind == "MERGED") {
+                Text("Drive video (merged)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+            } else if (file.mergedInto != null) {
+                Text("Merged → ${file.mergedInto}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+
             if (file.sizeBytes > 0) {
                 Text(
                     text = String.format(Locale.US, "Size: %.1f MB", file.sizeBytes / 1024f / 1024f),
@@ -113,7 +119,7 @@ fun VideoFileCard(
 
             if (file.status == FileStatus.DOWNLOADING.name || file.status == FileStatus.UPLOADING.name) {
                 val pct = if (file.sizeBytes > 0) file.downloadedBytes.toFloat() / file.sizeBytes.toFloat() else 0f
-                LinearProgressIndicator(progress = pct, modifier = Modifier.fillMaxWidth())
+                LinearProgressIndicator(progress = { pct }, modifier = Modifier.fillMaxWidth())
             }
 
             file.errorMessage?.let { error ->
@@ -151,6 +157,7 @@ fun StatusChip(status: String) {
         "DOWNLOADED" -> Pair(MaterialTheme.colorScheme.primary, "Downloaded")
         "UPLOADING" -> Pair(MaterialTheme.colorScheme.secondary, "Uploading")
         "UPLOADED" -> Pair(MaterialTheme.colorScheme.primary, "Uploaded")
+        "MERGED" -> Pair(MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f), "Merged")
         "PENDING" -> Pair(MaterialTheme.colorScheme.error.copy(alpha = 0.6f), "Pending")
         "FAILED" -> Pair(MaterialTheme.colorScheme.error, "Failed")
         else -> Pair(MaterialTheme.colorScheme.onSurfaceVariant, status)

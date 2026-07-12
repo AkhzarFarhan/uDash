@@ -21,8 +21,26 @@ interface VideoFileDao {
     @Query("SELECT * FROM video_files WHERE status IN (:statuses) ORDER BY capturedAtEpoch ASC")
     suspend fun getByStatuses(statuses: List<String>): List<VideoFileEntity>
 
-    @Query("SELECT * FROM video_files WHERE status = 'DOWNLOADED' ORDER BY capturedAtEpoch ASC LIMIT 1")
+    @Query("SELECT * FROM video_files WHERE status = 'DOWNLOADED' AND kind = 'MERGED' ORDER BY capturedAtEpoch ASC LIMIT 1")
     suspend fun nextToUpload(): VideoFileEntity?
+
+    @Query("SELECT * FROM video_files WHERE status = 'DOWNLOADED' AND kind = 'SEGMENT' ORDER BY capturedAtEpoch ASC")
+    suspend fun downloadedSegments(): List<VideoFileEntity>
+
+    @Query("UPDATE video_files SET kind = 'MERGED', updatedAtEpoch = :ts WHERE fileName = :name")
+    suspend fun relabelAsMerged(name: String, ts: Long = System.currentTimeMillis())
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMerged(entity: VideoFileEntity)
+
+    @Query("UPDATE video_files SET status = 'MERGED', mergedInto = :output, localPath = NULL, updatedAtEpoch = :ts WHERE fileName = :name")
+    suspend fun markSegmentMerged(name: String, output: String, ts: Long = System.currentTimeMillis())
+
+    @Transaction
+    suspend fun commitMerge(output: VideoFileEntity, consumed: List<String>, ts: Long = System.currentTimeMillis()) {
+        insertMerged(output)
+        consumed.forEach { markSegmentMerged(it, output.fileName, ts) }
+    }
 
     @Query("SELECT * FROM video_files WHERE status IN ('DISCOVERED','PENDING') ORDER BY capturedAtEpoch ASC")
     suspend fun pendingDownloads(): List<VideoFileEntity>
@@ -35,4 +53,24 @@ interface VideoFileDao {
 
     @Query("UPDATE video_files SET status = :status, updatedAtEpoch = :ts WHERE fileName = :name")
     suspend fun setStatus(name: String, status: String, ts: Long = System.currentTimeMillis())
+
+    @Query(
+        "UPDATE video_files SET retryCount = retryCount + 1, status = :retryStatus, " +
+            "errorMessage = :error, updatedAtEpoch = :ts WHERE fileName = :name"
+    )
+    suspend fun recordRetry(name: String, retryStatus: String, error: String, ts: Long = System.currentTimeMillis())
+
+    @Query(
+        "UPDATE video_files SET downloadedBytes = :downloaded, sizeBytes = :size, " +
+            "updatedAtEpoch = :ts WHERE fileName = :name"
+    )
+    suspend fun setDownloadProgress(name: String, downloaded: Long, size: Long, ts: Long = System.currentTimeMillis())
+
+    /**
+     * Reset rows stuck in a transient state after a process kill (no catch block ran). Called once
+     * at worker start; safe because each pipeline worker is unique (KEEP), so no live worker holds
+     * a row in [fromStatus]. Returns the number of rows reclaimed.
+     */
+    @Query("UPDATE video_files SET status = :toStatus, updatedAtEpoch = :ts WHERE status = :fromStatus")
+    suspend fun reclaimOrphans(fromStatus: String, toStatus: String, ts: Long = System.currentTimeMillis()): Int
 }

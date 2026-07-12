@@ -38,10 +38,17 @@ class FileRepositoryTest {
             override suspend fun getAllKnownFileNames(): List<String> = emptyList()
             override suspend fun getByStatuses(statuses: List<String>): List<VideoFileEntity> = emptyList()
             override suspend fun nextToUpload(): VideoFileEntity? = null
+            override suspend fun downloadedSegments(): List<VideoFileEntity> = emptyList()
+            override suspend fun relabelAsMerged(name: String, ts: Long) {}
+            override suspend fun insertMerged(entity: VideoFileEntity) {}
+            override suspend fun markSegmentMerged(name: String, output: String, ts: Long) {}
             override suspend fun pendingDownloads(): List<VideoFileEntity> = emptyList()
             override fun observeAll(): Flow<List<VideoFileEntity>> = emptyFlow()
             override fun observeCountByStatus(status: String): Flow<Int> = emptyFlow()
             override suspend fun setStatus(name: String, status: String, ts: Long) {}
+            override suspend fun recordRetry(name: String, retryStatus: String, error: String, ts: Long) {}
+            override suspend fun setDownloadProgress(name: String, downloaded: Long, size: Long, ts: Long) {}
+            override suspend fun reclaimOrphans(fromStatus: String, toStatus: String, ts: Long): Int = 0
         }
 
         val repository = FileRepository(mockDao, mockLog, File("."))
