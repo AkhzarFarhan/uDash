@@ -65,7 +65,7 @@ class UploadWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
                     sl.config.setQuotaPausedUntil(until)
                     sl.files.setStatus(item.fileName, FileStatus.DOWNLOADED)
                     sl.log.w("UploadWorker", "Quota exceeded; pausing uploads until $until", item.fileName)
-                    PipelineScheduler.enqueueUpload(
+                    PipelineScheduler.enqueueMergeThenUpload(
                         applicationContext,
                         until - System.currentTimeMillis(),
                         ExistingWorkPolicy.REPLACE

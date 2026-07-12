@@ -76,6 +76,6 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun uploadNow() {
-        PipelineScheduler.enqueueUpload(getApplication())
+        PipelineScheduler.enqueueMergeThenUpload(getApplication())
     }
 }
