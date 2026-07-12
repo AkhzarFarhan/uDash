@@ -458,7 +458,9 @@ class Mp4Merger {
 }
 ```
 
-> **Test note:** `MediaExtractor`/`MediaMuxer` are native and cannot run in JVM unit tests. This class is verified by the device E2E checklist in Task 9 (play a merged file; confirm duration ≈ sum of segments and audio stays in sync). Its pure collaborators (`DriveGrouper`, `MergeNaming`) are unit-tested.
+> **Applied fixes (Task B3 review):** The initial 1 MB fixed buffer could silently truncate a track when a keyframe exceeds it (`readSampleData` overflow is indistinguishable from EOS) while still returning `Success`. The shipped code (a) sizes the sample buffer from `max(MediaFormat.KEY_MAX_INPUT_SIZE across head tracks, 4 MB floor)`; (b) calls `muxer.stop()` **before** the `Success` return (with a `started` flag) so a finalization failure becomes `Outcome.Error`, not a false success; (c) initializes `maxPtsThisSegment = timeOffsetUs` so a zero-sample segment cannot regress the running offset; (d) drops the unused `TrackFormat` data class.
+
+> **Test note:** `MediaExtractor`/`MediaMuxer` are native and cannot run in JVM unit tests. This class is verified by the device E2E checklist in Task 9 — which MUST play a merged file containing BOTH audio and video tracks and confirm audio is present and in sync throughout (not just duration ≈ sum), since the per-track select/drain approach can only be validated on-device. Its pure collaborators (`DriveGrouper`, `MergeNaming`) are unit-tested.
 
 - [ ] **Step 2: Build**
 
