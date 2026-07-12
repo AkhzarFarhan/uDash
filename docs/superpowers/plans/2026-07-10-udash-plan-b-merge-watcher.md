@@ -712,7 +712,8 @@ git commit -m "feat: MergeWorker groups+merges drives atomically, with per-segme
 
 **Interfaces:**
 - Consumes: `MergeWorker`, existing `UploadWorker` (Plan A) and its UNMETERED constraint.
-- Produces: `PipelineScheduler.enqueueMergeThenUpload(context, initialDelayMillis: Long = 0L)`; `enqueueUpload` retained for the quota-delay re-enqueue path from Plan A's `UploadWorker`.
+- Produces: `PipelineScheduler.enqueueMergeThenUpload(context, initialDelayMillis: Long = 0L, existingPolicy: ExistingWorkPolicy = ExistingWorkPolicy.KEEP)`.
+- **Reconciliation (from the Plan A whole-branch review):** after this task, uploads run ONLY via the `MERGE_UPLOAD_WORK` chain, so nothing may re-trigger the standalone `UPLOAD_WORK` (two unique works both running `UploadWorker` would race `nextToUpload()` → double-upload). The two remaining callers of `enqueueUpload` — `UploadWorker`'s quota re-enqueue and `DashboardViewModel.uploadNow()` — are rerouted to `enqueueMergeThenUpload` (Step 2). The quota path passes `REPLACE` (it re-enqueues from inside the running chain's upload step, so KEEP would drop it). `enqueueUpload` is left defined but unused.
 
 - [ ] **Step 1: Add the merge→upload chain**
 
@@ -723,9 +724,13 @@ In `app/src/main/java/com/ddpai/uploader/pipeline/PipelineScheduler.kt`:
     const val MERGE_UPLOAD_WORK = "ddpai_merge_upload"
 ```
 
-(b) Add:
+(b) Add (with an `existingPolicy` param — default `KEEP`; the quota path passes `REPLACE`):
 ```kotlin
-    fun enqueueMergeThenUpload(context: Context, initialDelayMillis: Long = 0L) {
+    fun enqueueMergeThenUpload(
+        context: Context,
+        initialDelayMillis: Long = 0L,
+        existingPolicy: ExistingWorkPolicy = ExistingWorkPolicy.KEEP
+    ) {
         val unmetered = Constraints.Builder()
             .setRequiredNetworkType(androidx.work.NetworkType.UNMETERED)
             .build()
@@ -738,7 +743,7 @@ In `app/src/main/java/com/ddpai/uploader/pipeline/PipelineScheduler.kt`:
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
             .build()
         WorkManager.getInstance(context)
-            .beginUniqueWork(MERGE_UPLOAD_WORK, ExistingWorkPolicy.KEEP, merge)
+            .beginUniqueWork(MERGE_UPLOAD_WORK, existingPolicy, merge)
             .then(upload)
             .enqueue()
     }
@@ -754,12 +759,47 @@ In `app/src/main/java/com/ddpai/uploader/pipeline/PipelineScheduler.kt`:
     }
 ```
 
-- [ ] **Step 2: Build**
+- [ ] **Step 2: Reroute the two remaining `enqueueUpload` callers to the chain**
+
+So that uploads only ever run via the single `MERGE_UPLOAD_WORK` unique work (no concurrent `UploadWorker`).
+
+(a) In `app/src/main/java/com/ddpai/uploader/pipeline/UploadWorker.kt`, the quota branch currently self-re-enqueues via `enqueueUpload`. Change:
+```kotlin
+                    PipelineScheduler.enqueueUpload(
+                        applicationContext,
+                        until - System.currentTimeMillis(),
+                        ExistingWorkPolicy.REPLACE
+                    )
+```
+to:
+```kotlin
+                    PipelineScheduler.enqueueMergeThenUpload(
+                        applicationContext,
+                        until - System.currentTimeMillis(),
+                        ExistingWorkPolicy.REPLACE
+                    )
+```
+(The delayed re-run harmlessly re-runs the merge step first — a no-op when nothing is left to merge — then uploads. `import androidx.work.ExistingWorkPolicy` is already present in UploadWorker from Plan A.)
+
+(b) In `app/src/main/java/com/ddpai/uploader/ui/dashboard/DashboardViewModel.kt`, change the manual action:
+```kotlin
+    fun uploadNow() {
+        PipelineScheduler.enqueueUpload(getApplication())
+    }
+```
+to:
+```kotlin
+    fun uploadNow() {
+        PipelineScheduler.enqueueMergeThenUpload(getApplication())
+    }
+```
+
+- [ ] **Step 3: Build**
 
 Run: `./gradlew :app:assembleDebug`
 Expected: `BUILD SUCCESSFUL`.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add app/src/main/java/com/ddpai/uploader/pipeline/PipelineScheduler.kt
