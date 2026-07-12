@@ -44,6 +44,13 @@
             </intent-filter>
         </activity>
 
+        <!-- WorkManager's own foreground service must declare the dataSync type our workers use
+             (setForeground with FOREGROUND_SERVICE_TYPE_DATA_SYNC); targetSdk 34 rejects a mismatch. -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
+
         <service
             android:name=".pipeline.WatcherService"
             android:exported="false"
