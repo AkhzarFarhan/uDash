@@ -10,7 +10,7 @@ import com.ddpai.uploader.data.model.DashcamFile
  * the same capture time, so both must be excluded, not just one.
  */
 object ListingFilter {
-    private val STREAM_RE = Regex("""_(0060|F|R)\.mp4$""", RegexOption.IGNORE_CASE)
+    private val STREAM_RE = Regex("""_([a-zA-Z0-9_-]+)\.mp4$""", RegexOption.IGNORE_CASE)
 
     fun excludeNewest(files: List<DashcamFile>): List<DashcamFile> {
         if (files.isEmpty()) return files
@@ -23,5 +23,5 @@ object ListingFilter {
     }
 
     private fun streamKeyOf(fileName: String): String =
-        STREAM_RE.find(fileName)?.groupValues?.get(1)?.uppercase() ?: fileName
+        STREAM_RE.find(fileName)?.groupValues?.get(1)?.uppercase() ?: "MAIN"
 }

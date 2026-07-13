@@ -15,6 +15,7 @@ class FileRepository(
     fun observeCount(status: FileStatus) = dao.observeCountByStatus(status.name)
 
     suspend fun reconcileListing(remote: List<DashcamFile>, gateway: String): Int {
+        logger.x("FileRepo", "reconcileListing() remoteSize=${remote.size} gateway=$gateway")
         var added = 0
         remote.forEach { f ->
             val entity = VideoFileEntity(
@@ -25,39 +26,89 @@ class FileRepository(
                 sizeBytes = f.sizeBytes,
                 capturedAtEpoch = f.capturedAtEpoch
             )
-            if (dao.insertIgnore(entity) != -1L) {
+            val result = dao.insertIgnore(entity)
+            logger.x("FileRepo", "reconcileListing: insertIgnore(${f.fileName}) returned $result")
+            if (result != -1L) {
                 added++
                 logger.i("FileRepo", "Discovered ${f.fileName}")
             }
         }
+        logger.x("FileRepo", "reconcileListing() finished, added=$added")
         return added
     }
 
-    suspend fun pendingDownloads() = dao.pendingDownloads()
-    suspend fun nextToUpload() = dao.nextToUpload()
-    suspend fun downloadedSegments() = dao.downloadedSegments()
+    suspend fun pendingDownloads(): List<VideoFileEntity> {
+        logger.x("FileRepo", "pendingDownloads() called")
+        val res = dao.pendingDownloads()
+        logger.x("FileRepo", "pendingDownloads() returned ${res.size} items")
+        return res
+    }
 
-    suspend fun relabelAsMerged(name: String) = dao.relabelAsMerged(name)
+    suspend fun nextToUpload(): VideoFileEntity? {
+        logger.x("FileRepo", "nextToUpload() called")
+        val res = dao.nextToUpload()
+        logger.x("FileRepo", "nextToUpload() returned: ${res?.fileName ?: "null"}")
+        return res
+    }
 
-    suspend fun commitMerge(output: VideoFileEntity, consumedNames: List<String>) =
+    suspend fun downloadedSegments(): List<VideoFileEntity> {
+        logger.x("FileRepo", "downloadedSegments() called")
+        val res = dao.downloadedSegments()
+        logger.x("FileRepo", "downloadedSegments() returned ${res.size} items")
+        return res
+    }
+
+    suspend fun relabelAsMerged(name: String) {
+        logger.x("FileRepo", "relabelAsMerged() name=$name")
+        dao.relabelAsMerged(name)
+    }
+
+    suspend fun commitMerge(output: VideoFileEntity, consumedNames: List<String>) {
+        logger.x("FileRepo", "commitMerge() output=${output.fileName} consumedNames=$consumedNames")
         dao.commitMerge(output, consumedNames)
+    }
 
-    suspend fun get(name: String) = dao.getByName(name)
-    suspend fun update(e: VideoFileEntity) = dao.update(e.copy(updatedAtEpoch = System.currentTimeMillis()))
-    suspend fun setStatus(name: String, s: FileStatus) = dao.setStatus(name, s.name)
+    suspend fun get(name: String): VideoFileEntity? {
+        logger.x("FileRepo", "get() name=$name")
+        val res = dao.getByName(name)
+        logger.x("FileRepo", "get() returned exists=${res != null}")
+        return res
+    }
 
-    suspend fun recordRetry(name: String, retryStatus: FileStatus, error: String) =
+    suspend fun update(e: VideoFileEntity) {
+        logger.x("FileRepo", "update() name=${e.fileName} status=${e.status}")
+        dao.update(e.copy(updatedAtEpoch = System.currentTimeMillis()))
+    }
+
+    suspend fun setStatus(name: String, s: FileStatus) {
+        logger.x("FileRepo", "setStatus() name=$name status=${s.name}")
+        dao.setStatus(name, s.name)
+    }
+
+    suspend fun recordRetry(name: String, retryStatus: FileStatus, error: String) {
+        logger.x("FileRepo", "recordRetry() name=$name retryStatus=${retryStatus.name} error=$error")
         dao.recordRetry(name, retryStatus.name, error)
+    }
 
-    suspend fun setDownloadProgress(name: String, downloaded: Long, size: Long) =
+    suspend fun setDownloadProgress(name: String, downloaded: Long, size: Long) {
+        logger.x("FileRepo", "setDownloadProgress() name=$name downloaded=$downloaded size=$size")
         dao.setDownloadProgress(name, downloaded, size)
+    }
 
-    suspend fun reclaimOrphans(from: FileStatus, to: FileStatus) =
-        dao.reclaimOrphans(from.name, to.name)
+    suspend fun reclaimOrphans(from: FileStatus, to: FileStatus): Int {
+        logger.x("FileRepo", "reclaimOrphans() from=${from.name} to=${to.name}")
+        val res = dao.reclaimOrphans(from.name, to.name)
+        logger.x("FileRepo", "reclaimOrphans() returned $res reclaimed rows")
+        return res
+    }
 
-    fun fileFor(name: String) = File(storageDir, name)
+    fun fileFor(name: String): File {
+        logger.x("FileRepo", "fileFor() name=$name")
+        return File(storageDir, name)
+    }
 
     suspend fun markCorruptAndReset(name: String, reason: String) {
+        logger.x("FileRepo", "markCorruptAndReset() name=$name reason=$reason")
         val e = dao.getByName(name) ?: return
         fileFor(name).delete()
         dao.update(
@@ -74,6 +125,7 @@ class FileRepository(
     }
 
     suspend fun markUploadedAndDelete(name: String, videoId: String, deleteLocal: Boolean) {
+        logger.x("FileRepo", "markUploadedAndDelete() name=$name videoId=$videoId deleteLocal=$deleteLocal")
         val e = dao.getByName(name) ?: return
         if (deleteLocal) fileFor(name).delete()
         dao.update(

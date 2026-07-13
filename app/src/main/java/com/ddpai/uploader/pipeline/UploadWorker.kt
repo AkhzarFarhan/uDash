@@ -22,72 +22,82 @@ class UploadWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
         sl.notifications.uploadForegroundInfo(applicationContext, "Uploading to YouTube…")
 
     override suspend fun doWork(): Result {
-        if (!sl.config.isConfigured() || !sl.auth.isAuthorized()) {
-            sl.log.w("UploadWorker", "Not configured/authorized; skipping")
-            return Result.success()
-        }
-        val pausedUntil = sl.config.getQuotaPausedUntil()
-        if (System.currentTimeMillis() < pausedUntil) {
-            sl.log.w("UploadWorker", "Uploads paused until $pausedUntil (quota); skipping")
-            return Result.success()
-        }
-        if (!onValidatedNonDashcamWifi()) {
-            sl.log.w("UploadWorker", "Not on validated internet Wi-Fi; deferring uploads")
-            return Result.retry()
-        }
-        promoteToForeground()
-
-        val uploader = YouTubeUploader(sl.auth, sl.config, sl.log)
-        val deleteLocal = sl.config.config.value.deleteAfterUpload
-        val maxRetries = sl.config.config.value.maxRetries
-
-        // Reclaim rows a previous run left mid-upload when the process was killed; the persisted
-        // uploadSessionUrl then drives the resumable-session resume in uploadOne.
-        val reclaimed = sl.files.reclaimOrphans(FileStatus.UPLOADING, FileStatus.DOWNLOADED)
-        if (reclaimed > 0) sl.log.w("UploadWorker", "Reclaimed $reclaimed orphaned UPLOADING → DOWNLOADED")
-
-        while (true) {
-            val item = sl.files.nextToUpload() ?: break
-            val file = sl.files.fileFor(item.fileName)
-            if (!file.exists()) {
-                sl.log.w("UploadWorker", "Local file missing for ${item.fileName}; resetting", item.fileName)
-                sl.files.setStatus(item.fileName, FileStatus.PENDING)
-                continue
+        sl.log.x("UploadWorker", "doWork() started")
+        try {
+            if (!sl.config.isConfigured() || !sl.auth.isAuthorized()) {
+                sl.log.w("UploadWorker", "Not configured/authorized; skipping")
+                return Result.success()
             }
-            try {
-                sl.files.setStatus(item.fileName, FileStatus.UPLOADING)
-                val videoId = uploadOne(uploader, item.fileName, file)
-                sl.files.markUploadedAndDelete(item.fileName, videoId, deleteLocal)
-                sl.log.i("UploadWorker", "UPLOADED ${item.fileName} → $videoId", item.fileName)
-            } catch (e: UploadHttpException) {
-                if (QuotaError.isQuota(e.code, e.bodyText)) {
-                    val until = QuotaClock.nextResetMillis(System.currentTimeMillis())
-                    sl.config.setQuotaPausedUntil(until)
-                    sl.files.setStatus(item.fileName, FileStatus.DOWNLOADED)
-                    sl.log.w("UploadWorker", "Quota exceeded; pausing uploads until $until", item.fileName)
-                    PipelineScheduler.enqueueMergeThenUpload(
-                        applicationContext,
-                        until - System.currentTimeMillis(),
-                        ExistingWorkPolicy.REPLACE
-                    )
-                    return Result.success()
-                }
-                if (e.code == 401) {
-                    sl.config.setNeedsReauth(true)
-                    sl.log.e("UploadWorker", "401 unauthorized; re-auth required", item.fileName)
-                    sl.files.setStatus(item.fileName, FileStatus.DOWNLOADED)
-                    return Result.success()
-                }
-                handleRetryableUploadError(item.fileName, "HTTP ${e.code}", maxRetries)
-                return Result.retry()
-            } catch (e: Exception) {
-                handleRetryableUploadError(item.fileName, e.message ?: "upload error", maxRetries)
+            val pausedUntil = sl.config.getQuotaPausedUntil()
+            if (System.currentTimeMillis() < pausedUntil) {
+                sl.log.w("UploadWorker", "Uploads paused until $pausedUntil (quota); skipping")
+                return Result.success()
+            }
+            if (!onValidatedNonDashcamWifi()) {
+                sl.log.w("UploadWorker", "Not on validated internet Wi-Fi; deferring uploads")
                 return Result.retry()
             }
+            promoteToForeground()
+
+            val uploader = YouTubeUploader(sl.auth, sl.config, sl.log)
+            val deleteLocal = sl.config.config.value.deleteAfterUpload
+            val maxRetries = sl.config.config.value.maxRetries
+
+            // Reclaim rows a previous run left mid-upload when the process was killed; the persisted
+            // uploadSessionUrl then drives the resumable-session resume in uploadOne.
+            val reclaimed = sl.files.reclaimOrphans(FileStatus.UPLOADING, FileStatus.DOWNLOADED)
+            if (reclaimed > 0) sl.log.w("UploadWorker", "Reclaimed $reclaimed orphaned UPLOADING → DOWNLOADED")
+
+            while (true) {
+                sl.log.x("UploadWorker", "Fetching next file to upload")
+                val item = sl.files.nextToUpload() ?: break
+                sl.log.x("UploadWorker", "Next file to upload: ${item.fileName}")
+                val file = sl.files.fileFor(item.fileName)
+                if (!file.exists()) {
+                    sl.log.w("UploadWorker", "Local file missing for ${item.fileName}; resetting", item.fileName)
+                    sl.files.setStatus(item.fileName, FileStatus.PENDING)
+                    continue
+                }
+                try {
+                    sl.log.x("UploadWorker", "Setting status to UPLOADING for ${item.fileName}")
+                    sl.files.setStatus(item.fileName, FileStatus.UPLOADING)
+                    val videoId = uploadOne(uploader, item.fileName, file)
+                    sl.log.x("UploadWorker", "Marking uploaded and deleting: ${item.fileName}")
+                    sl.files.markUploadedAndDelete(item.fileName, videoId, deleteLocal)
+                    sl.log.i("UploadWorker", "UPLOADED ${item.fileName} → $videoId", item.fileName)
+                } catch (e: UploadHttpException) {
+                    if (QuotaError.isQuota(e.code, e.bodyText)) {
+                        val until = QuotaClock.nextResetMillis(System.currentTimeMillis())
+                        sl.config.setQuotaPausedUntil(until)
+                        sl.files.setStatus(item.fileName, FileStatus.DOWNLOADED)
+                        sl.log.w("UploadWorker", "Quota exceeded; pausing uploads until $until", item.fileName)
+                        PipelineScheduler.enqueueMergeThenUpload(
+                            applicationContext,
+                            until - System.currentTimeMillis(),
+                            ExistingWorkPolicy.REPLACE
+                        )
+                        return Result.success()
+                    }
+                    if (e.code == 401) {
+                        sl.config.setNeedsReauth(true)
+                        sl.log.e("UploadWorker", "401 unauthorized; re-auth required", item.fileName)
+                        sl.files.setStatus(item.fileName, FileStatus.DOWNLOADED)
+                        return Result.success()
+                    }
+                    handleRetryableUploadError(item.fileName, "HTTP ${e.code}", maxRetries)
+                    return Result.retry()
+                } catch (e: Exception) {
+                    handleRetryableUploadError(item.fileName, e.message ?: "upload error", maxRetries)
+                    return Result.retry()
+                }
+            }
+            sl.progress.clear()
+            sl.log.i("UploadWorker", "Upload queue drained")
+            return Result.success()
+        } catch (t: Throwable) {
+            sl.log.e("UploadWorker", "Fatal unhandled exception in UploadWorker: ${t.message}\n${t.stackTraceToString()}")
+            return Result.failure()
         }
-        sl.progress.clear()
-        sl.log.i("UploadWorker", "Upload queue drained")
-        return Result.success()
     }
 
     /** Runs the resumable protocol for one file; re-initiates once if the session is expired. */

@@ -36,7 +36,7 @@ The application relies on several advanced design choices to ensure reliability 
 - **[ListingFilter.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/dashcam/ListingFilter.kt):** Evaluates discovered files and ignores those outside configured rules (e.g. ignores files too old or not fitting filename pattern).
 
 ### 3. Data & Config Layer (`com.ddpai.uploader.data`)
-- **[AppConfig.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/data/config/AppConfig.kt):** Holds client IDs, secrets, max retry attempts, upload settings, and the default Gateway IP (`192.168.0.1`).
+- **[AppConfig.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/data/config/AppConfig.kt):** Holds client IDs, secrets, max retry attempts, upload settings, and the default Gateway IP (`193.168.0.1`).
 - **[ConfigRepository.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/data/config/ConfigRepository.kt):** Persists configuration fields and AppAuth state variables using Android Jetpack's **EncryptedSharedPreferences** to encrypt credentials at rest.
 - **[AppDatabase.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/data/db/AppDatabase.kt):** Defines Room database configurations with destructively falling-back migrations.
 - **[VideoFileDao.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/data/db/VideoFileDao.kt):** SQL query mappings to select downloads, uploads, check statuses, and update metadata.

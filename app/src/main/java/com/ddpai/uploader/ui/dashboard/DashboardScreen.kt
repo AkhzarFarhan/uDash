@@ -80,7 +80,7 @@ fun DashboardScreen(navController: NavController, vm: DashboardViewModel = viewM
                 ) {
                     Text("Link Status:", style = MaterialTheme.typography.bodyLarge)
                     val (netText, netColor) = when (state.networkType) {
-                        NetworkType.DASHCAM_AP -> Pair("DASHCAM AP (193.168.0.1)", MaterialTheme.colorScheme.primary)
+                        NetworkType.DASHCAM_AP -> Pair("DASHCAM AP (${state.gateway})", MaterialTheme.colorScheme.primary)
                         NetworkType.HOME_WIFI -> Pair("HOME INTERNET", MaterialTheme.colorScheme.primary)
                         NetworkType.OTHER -> Pair("OTHER WI-FI / NETWORK", MaterialTheme.colorScheme.error)
                         NetworkType.NONE -> Pair("DISCONNECTED", MaterialTheme.colorScheme.error)

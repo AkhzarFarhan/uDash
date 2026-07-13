@@ -6,7 +6,7 @@ import java.util.Locale
 import java.util.TimeZone
 
 object DashcamFileListParser {
-    private val NAME_RE = Regex("""(\d{8})(\d{6})_(0060|F|R)\.mp4""", RegexOption.IGNORE_CASE)
+    private val NAME_RE = Regex("""(\d{8})(\d{6})_?([a-zA-Z0-9_-]*)\.mp4""", RegexOption.IGNORE_CASE)
 
     fun parse(body: String): List<DashcamFile> {
         val trimmed = body.trimStart()

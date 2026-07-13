@@ -19,29 +19,37 @@ class MergeWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
         sl.notifications.uploadForegroundInfo(applicationContext, "Merging drive clips…")
 
     override suspend fun doWork(): Result {
-        promoteToForeground()
-        val segments = sl.files.downloadedSegments()
-        if (segments.isEmpty()) {
-            sl.log.i("MergeWorker", "No segments to merge")
-            return Result.success()
-        }
-        val grouperSegs = segments.mapNotNull { e ->
-            DriveGrouper.streamKeyOf(e.fileName)?.let { key ->
-                DriveGrouper.Segment(e.fileName, e.capturedAtEpoch, key)
+        sl.log.x("MergeWorker", "doWork() started")
+        try {
+            promoteToForeground()
+            sl.log.x("MergeWorker", "Fetching downloaded segments from DB")
+            val segments = sl.files.downloadedSegments()
+            sl.log.x("MergeWorker", "Found ${segments.size} downloaded segments")
+            if (segments.isEmpty()) {
+                sl.log.i("MergeWorker", "No segments to merge")
+                return Result.success()
             }
-        }
-        val groups = DriveGrouper.buildClosedGroups(grouperSegs, System.currentTimeMillis())
-        sl.log.i("MergeWorker", "${groups.size} closed drive group(s) ready to merge")
-        val byName = segments.associateBy { it.fileName }
-        val merger = Mp4Merger()
+            val grouperSegs = segments.mapNotNull { e ->
+                DriveGrouper.streamKeyOf(e.fileName)?.let { key ->
+                    DriveGrouper.Segment(e.fileName, e.capturedAtEpoch, key)
+                }
+            }
+            sl.log.x("MergeWorker", "Mapping segment keys: ${grouperSegs.size} mapped")
+            val groups = DriveGrouper.buildClosedGroups(grouperSegs, System.currentTimeMillis())
+            sl.log.i("MergeWorker", "${groups.size} closed drive group(s) ready to merge")
+            val byName = segments.associateBy { it.fileName }
+            val merger = Mp4Merger()
 
-        for (group in groups) {
-            // DriveGrouper already splits by gap and by the 60-segment cap, so every group has a
-            // distinct head timestamp and therefore a unique output name — no _p suffix needed.
-            processGroup(group, byName, merger)
+            for (group in groups) {
+                sl.log.x("MergeWorker", "Processing group for streamKey ${group.streamKey} with ${group.segments.size} segments")
+                processGroup(group, byName, merger)
+            }
+            sl.log.i("MergeWorker", "Merge cycle complete")
+            return Result.success()
+        } catch (t: Throwable) {
+            sl.log.e("MergeWorker", "Fatal unhandled exception in MergeWorker: ${t.message}\n${t.stackTraceToString()}")
+            return Result.failure()
         }
-        sl.log.i("MergeWorker", "Merge cycle complete")
-        return Result.success()
     }
 
     private suspend fun processGroup(

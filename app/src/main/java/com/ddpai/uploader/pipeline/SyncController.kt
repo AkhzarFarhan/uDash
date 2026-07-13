@@ -11,7 +11,7 @@ import com.ddpai.uploader.network.NetworkType
 /** Central place that classifies the active network and enqueues the right pipeline work. */
 class SyncController(private val context: Context, private val sl: ServiceLocator) {
     private var lastType: NetworkType? = null
-    private val monitor = NetworkMonitor(context, sl.config) { type, network -> onNetwork(type, network) }
+    private val monitor = NetworkMonitor(context, sl.config, sl.log) { type, network -> onNetwork(type, network) }
 
     fun start() = monitor.start()
 

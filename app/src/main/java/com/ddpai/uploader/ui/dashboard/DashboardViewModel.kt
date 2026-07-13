@@ -25,7 +25,8 @@ data class DashUiState(
     val quotaPausedUntil: Long = 0L,
     val needsReauth: Boolean = false,
     val merged: Int = 0,
-    val syncMode: String = "PERSISTENT"
+    val syncMode: String = "PERSISTENT",
+    val gateway: String = "193.168.0.1"
 )
 
 class DashboardViewModel(application: Application) : AndroidViewModel(application) {
@@ -69,7 +70,8 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             quotaPausedUntil = runtime.quotaPausedUntil,
             needsReauth = runtime.needsReauth,
             merged = merged,
-            syncMode = sl.config.config.value.syncMode
+            syncMode = sl.config.config.value.syncMode,
+            gateway = sl.config.config.value.dashcamGateway
         )
     }.stateIn(
         scope = viewModelScope,
