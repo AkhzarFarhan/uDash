@@ -18,10 +18,75 @@ class DashcamClient(
 ) {
     private val client = BoundHttpClientFactory.forNetwork(network)
     private val base = "http://$gateway"
+    private var sessionId: String? = null
+
+    private suspend fun ensureSession(): Boolean {
+        if (sessionId != null) return true
+
+        val url = "$base/vcam/cmd.cgi?cmd=API_RequestSessionID"
+        logger.i("DashcamClient", "Requesting Session ID from: $url")
+        try {
+            val req = Request.Builder().url(url).post(okhttp3.internal.EMPTY_REQUEST).build()
+            client.newCall(req).execute().use { resp ->
+                logger.d("DashcamClient", "Session request HTTP response code: ${resp.code}")
+                
+                // 1. Try Set-Cookie header
+                val cookies = resp.headers("Set-Cookie")
+                for (cookie in cookies) {
+                    if (cookie.contains("SessionID=", ignoreCase = true)) {
+                        val parsedId = cookie.substringAfter("SessionID=").substringBefore(";")
+                        if (parsedId.isNotBlank()) {
+                            sessionId = parsedId
+                            logger.i("DashcamClient", "Acquired Session ID from cookie: $sessionId")
+                            return true
+                        }
+                    }
+                }
+
+                // 2. Try parsing body
+                val body = resp.body?.string().orEmpty()
+                logger.d("DashcamClient", "Session body: $body")
+
+                val sessionRegex = Regex(""""sessionid"\s*:\s*"([^"]+)"""", RegexOption.IGNORE_CASE)
+                val match = sessionRegex.find(body)
+                if (match != null) {
+                    sessionId = match.groupValues[1]
+                    logger.i("DashcamClient", "Acquired Session ID from JSON match: $sessionId")
+                    return true
+                }
+
+                val dataRegex = Regex(""""data"\s*:\s*"([^"]+)"""", RegexOption.IGNORE_CASE)
+                val dataMatch = dataRegex.find(body)
+                if (dataMatch != null && !dataMatch.groupValues[1].startsWith("0x")) {
+                    sessionId = dataMatch.groupValues[1]
+                    logger.i("DashcamClient", "Acquired Session ID from JSON data: $sessionId")
+                    return true
+                }
+            }
+        } catch (e: Exception) {
+            logger.w("DashcamClient", "Failed to acquire Session ID: ${e.javaClass.simpleName}: ${e.message}")
+        }
+        return sessionId != null
+    }
+
+    private fun Request.Builder.addSessionHeaders(): Request.Builder {
+        sessionId?.let { sid ->
+            header("sessionid", sid)
+            header("Cookie", "SessionID=$sid")
+        }
+        return this
+    }
 
     suspend fun listFiles(): List<DashcamFile> = withContext(Dispatchers.IO) {
         logger.i("DashcamClient", "listFiles() start: base=$base, network=$network")
+        
+        // Ensure a session exists first if camera requires auth
+        ensureSession()
+
         val endpoints = listOf(
+            "$base/vcam/cmd.cgi?cmd=APP_PlaybackListReq",
+            "$base/vcam/cmd.cgi?cmd=APP_PlaybackListReq_RearCam",
+            "$base/vcam/cmd.cgi?cmd=APP_EventListReq",
             "$base/vcam/cmd.cgi?cmd=getFileList",
             "$base/vcam/cmd.cgi?cmd=getfilelist",
             "$base/vcam/cmd.cgi",
@@ -30,7 +95,7 @@ class DashcamClient(
         for (url in endpoints) {
             try {
                 logger.d("DashcamClient", "Trying endpoint: $url")
-                val req = Request.Builder().url(url).get().build()
+                val req = Request.Builder().url(url).get().addSessionHeaders().build()
                 client.newCall(req).execute().use { resp ->
                     logger.d("DashcamClient", "Response from $url → HTTP ${resp.code}, content-type=${resp.header("Content-Type")}")
                     if (!resp.isSuccessful) {
@@ -40,7 +105,6 @@ class DashcamClient(
                     val body = resp.body?.string().orEmpty()
                     logger.d("DashcamClient", "Response body length=${body.length} from $url")
                     if (body.length < 2000) {
-                        // Log short responses in full for debugging
                         logger.d("DashcamClient", "Full response body:\n$body")
                     } else {
                         logger.d("DashcamClient", "Body preview (first 500 chars): ${body.take(500)}")
@@ -71,7 +135,7 @@ class DashcamClient(
     ): Long = withContext(Dispatchers.IO) {
         val url = "$base/$fileName"
         logger.d("DashcamClient", "download() start: $url, resume@$existingBytes → ${target.absolutePath}")
-        val reqBuilder = Request.Builder().url(url).get()
+        val reqBuilder = Request.Builder().url(url).get().addSessionHeaders()
         if (existingBytes > 0) reqBuilder.header("Range", "bytes=$existingBytes-")
         val request = reqBuilder.build()
 

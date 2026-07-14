@@ -74,19 +74,16 @@ class ConfigViewModel(application: Application) : AndroidViewModel(application) 
                 return@launch
             }
             val gateway = config.value.dashcamGateway
-            val base = "http://$gateway"
-            val client = BoundHttpClientFactory.forNetwork(network)
-            val req = Request.Builder().url("$base/vcam/cmd.cgi?cmd=getFileList").get().build()
+            val dashcamClient = com.ddpai.uploader.dashcam.DashcamClient(network, gateway, logger)
             withContext(Dispatchers.IO) {
                 try {
-                    client.newCall(req).execute().use { resp ->
-                        if (resp.isSuccessful) {
-                            _testStatus.value = "Success! Dashcam listing reachable."
-                            logger.i("ConfigVM", "Connection test: Success")
-                        } else {
-                            _testStatus.value = "Fail: HTTP ${resp.code}"
-                            logger.w("ConfigVM", "Connection test failed: HTTP ${resp.code}")
-                        }
+                    val files = dashcamClient.listFiles()
+                    if (files.isNotEmpty()) {
+                        _testStatus.value = "Success! Connected and found ${files.size} videos."
+                        logger.i("ConfigVM", "Connection test: Success")
+                    } else {
+                        _testStatus.value = "Connected, but no video files were found on the dashcam."
+                        logger.w("ConfigVM", "Connection test: Reached but empty file list")
                     }
                 } catch (e: Exception) {
                     _testStatus.value = "Fail: ${e.message}"
