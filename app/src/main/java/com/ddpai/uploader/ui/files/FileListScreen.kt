@@ -27,8 +27,8 @@ fun FileListScreen(navController: NavController, vm: FileListViewModel = viewMod
     val files by vm.files.collectAsState()
     var fileToDelete by remember { mutableStateOf<String?>(null) }
 
-    // Map to keep track of collapsed/expanded state for each date key
-    val expandedStates = remember { mutableStateMapOf<String, Boolean>() }
+    // Key of the currently expanded date (null means all collapsed by default)
+    var expandedDateKey by remember { mutableStateOf<String?>(null) }
 
     // Group files by calendar day (yyyy-MM-dd)
     val groupedFiles = remember(files) {
@@ -40,15 +40,6 @@ fun FileListScreen(navController: NavController, vm: FileListViewModel = viewMod
                 a.first == "Unknown Date" -> 1
                 b.first == "Unknown Date" -> -1
                 else -> b.first.compareTo(a.first) // Newest days first
-            }
-        }
-    }
-
-    // Default new dates to expanded
-    LaunchedEffect(groupedFiles) {
-        groupedFiles.forEach { (date, _) ->
-            if (!expandedStates.containsKey(date)) {
-                expandedStates[date] = true
             }
         }
     }
@@ -109,14 +100,14 @@ fun FileListScreen(navController: NavController, vm: FileListViewModel = viewMod
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 groupedFiles.forEach { (dateKey, dateFiles) ->
-                    val isExpanded = expandedStates[dateKey] ?: true
+                    val isExpanded = expandedDateKey == dateKey
 
                     item(key = dateKey) {
                         DayHeader(
                             dateText = getDisplayDate(dateKey),
                             fileCount = dateFiles.size,
                             isExpanded = isExpanded,
-                            onToggle = { expandedStates[dateKey] = !isExpanded }
+                            onToggle = { expandedDateKey = if (isExpanded) null else dateKey }
                         )
                     }
 
