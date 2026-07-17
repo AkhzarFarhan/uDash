@@ -1,9 +1,13 @@
 package com.ddpai.uploader.ui.files
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,6 +26,45 @@ import java.util.Locale
 fun FileListScreen(navController: NavController, vm: FileListViewModel = viewModel()) {
     val files by vm.files.collectAsState()
     var fileToDelete by remember { mutableStateOf<String?>(null) }
+
+    // Map to keep track of collapsed/expanded state for each date key
+    val expandedStates = remember { mutableStateMapOf<String, Boolean>() }
+
+    // Group files by calendar day (yyyy-MM-dd)
+    val groupedFiles = remember(files) {
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        files.groupBy { file ->
+            if (file.capturedAtEpoch > 0) dateFormat.format(Date(file.capturedAtEpoch)) else "Unknown Date"
+        }.toList().sortedWith { a, b ->
+            when {
+                a.first == "Unknown Date" -> 1
+                b.first == "Unknown Date" -> -1
+                else -> b.first.compareTo(a.first) // Newest days first
+            }
+        }
+    }
+
+    // Default new dates to expanded
+    LaunchedEffect(groupedFiles) {
+        groupedFiles.forEach { (date, _) ->
+            if (!expandedStates.containsKey(date)) {
+                expandedStates[date] = true
+            }
+        }
+    }
+
+    val displayDateFormatter = remember { SimpleDateFormat("MMMM dd, yyyy", Locale.getDefault()) }
+    val parseDateFormatter = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US) }
+
+    fun getDisplayDate(dateKey: String): String {
+        if (dateKey == "Unknown Date") return dateKey
+        return try {
+            val date = parseDateFormatter.parse(dateKey)
+            if (date != null) displayDateFormatter.format(date) else dateKey
+        } catch (e: Exception) {
+            dateKey
+        }
+    }
 
     if (fileToDelete != null) {
         AlertDialog(
@@ -63,17 +106,79 @@ fun FileListScreen(navController: NavController, vm: FileListViewModel = viewMod
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(files) { file ->
-                    VideoFileCard(
-                        file = file,
-                        onPlay = { navController.navigate("player/${file.fileName}") },
-                        onRetry = { vm.retryFile(file.fileName) },
-                        onDeleteLocal = { fileToDelete = file.fileName }
-                    )
+                groupedFiles.forEach { (dateKey, dateFiles) ->
+                    val isExpanded = expandedStates[dateKey] ?: true
+
+                    item(key = dateKey) {
+                        DayHeader(
+                            dateText = getDisplayDate(dateKey),
+                            fileCount = dateFiles.size,
+                            isExpanded = isExpanded,
+                            onToggle = { expandedStates[dateKey] = !isExpanded }
+                        )
+                    }
+
+                    if (isExpanded) {
+                        items(dateFiles, key = { it.fileName }) { file ->
+                            Box(modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)) {
+                                VideoFileCard(
+                                    file = file,
+                                    onPlay = { navController.navigate("player/${file.fileName}") },
+                                    onRetry = { vm.retryFile(file.fileName) },
+                                    onDeleteLocal = { fileToDelete = file.fileName }
+                                )
+                            }
+                        }
+                    }
                 }
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DayHeader(
+    dateText: String,
+    fileCount: Int,
+    isExpanded: Boolean,
+    onToggle: () -> Unit
+) {
+    Card(
+        onClick = onToggle,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    text = dateText,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "$fileCount ${if (fileCount == 1) "file" else "files"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
+            }
+            Icon(
+                imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = if (isExpanded) "Collapse" else "Expand",
+                tint = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }

@@ -8,6 +8,7 @@ data class AppConfig(
     val deleteAfterUpload: Boolean = true,
     val wifiAutoStart: Boolean = true,
     val dashcamGateway: String = "193.168.0.1",
+    val homeWifiGateway: String = "",
     val maxRetries: Int = 5,
     val syncMode: String = "PERSISTENT",   // PERSISTENT | BATTERY_SAVER
 )

@@ -32,6 +32,7 @@ fun ConfigScreen(vm: ConfigViewModel = viewModel()) {
     var clientId by remember { mutableStateOf("") }
     var clientSecret by remember { mutableStateOf("") }
     var gateway by remember { mutableStateOf("") }
+    var homeWifiGateway by remember { mutableStateOf("") }
     var privacy by remember { mutableStateOf("private") }
     var deleteAfterUpload by remember { mutableStateOf(true) }
     var wifiAutoStart by remember { mutableStateOf(true) }
@@ -45,6 +46,7 @@ fun ConfigScreen(vm: ConfigViewModel = viewModel()) {
         clientId = configState.youtubeClientId
         clientSecret = configState.youtubeClientSecret
         gateway = configState.dashcamGateway
+        homeWifiGateway = configState.homeWifiGateway
         privacy = configState.uploadPrivacy
         deleteAfterUpload = configState.deleteAfterUpload
         wifiAutoStart = configState.wifiAutoStart
@@ -186,6 +188,14 @@ fun ConfigScreen(vm: ConfigViewModel = viewModel()) {
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                OutlinedTextField(
+                    value = homeWifiGateway,
+                    onValueChange = { homeWifiGateway = it },
+                    label = { Text("Home Wi-Fi Gateway IP (Optional)") },
+                    placeholder = { Text("e.g. 192.168.1.1") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -264,9 +274,11 @@ fun ConfigScreen(vm: ConfigViewModel = viewModel()) {
                             youtubeClientSecret = clientSecret,
                             uploadPrivacy = privacy,
                             dashcamGateway = gateway,
+                            homeWifiGateway = homeWifiGateway,
                             deleteAfterUpload = deleteAfterUpload,
                             wifiAutoStart = wifiAutoStart,
-                            maxRetries = maxRetries
+                            maxRetries = maxRetries,
+                            syncMode = configState.syncMode
                         )
                     )
                 },

@@ -54,15 +54,20 @@ class NetworkMonitor(
             return
         }
         val gatewayConfigured = configRepo.config.value.dashcamGateway
+        val homeGatewayConfigured = configRepo.config.value.homeWifiGateway
         val gatewayIp = NetworkGateway.extract(cm, network, context)
-        logger.d("NetworkMonitor", "evaluate: gatewayExtracted=$gatewayIp, gatewayConfigured=$gatewayConfigured")
+        logger.d("NetworkMonitor", "evaluate: gatewayExtracted=$gatewayIp, gatewayConfigured=$gatewayConfigured, homeGatewayConfigured=$homeGatewayConfigured")
 
         when {
             gatewayIp == gatewayConfigured -> {
                 logger.i("NetworkMonitor", "Dashcam AP confirmed via gateway match ($gatewayIp)")
                 onNetwork(NetworkType.DASHCAM_AP, network)
             }
-            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) -> {
+            homeGatewayConfigured.isNotBlank() && gatewayIp == homeGatewayConfigured -> {
+                logger.i("NetworkMonitor", "Home Wi-Fi confirmed via gateway match ($gatewayIp)")
+                onNetwork(NetworkType.HOME_WIFI, network)
+            }
+            homeGatewayConfigured.isBlank() && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) -> {
                 logger.d("NetworkMonitor", "Classified as HOME_WIFI (validated, gateway=$gatewayIp)")
                 onNetwork(NetworkType.HOME_WIFI, network)
             }

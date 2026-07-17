@@ -22,27 +22,34 @@ object DriveGrouper {
         segmentDurationMillis: Long = 60_000L
     ): List<DriveGroup> {
         val result = mutableListOf<DriveGroup>()
-        // Split by stream, then walk each stream in capture order.
+        val nowLocalDate = java.time.Instant.ofEpochMilli(nowMillis)
+            .atZone(java.time.ZoneId.systemDefault())
+            .toLocalDate()
+
         segments.groupBy { it.streamKey }.forEach { (stream, streamSegs) ->
-            val ordered = streamSegs.sortedBy { it.capturedAtEpoch }
-            var current = mutableListOf<Segment>()
-
-            fun flush() {
-                if (current.isEmpty()) return
-                val newest = current.maxOf { it.capturedAtEpoch }
-                val closed = newest + segmentDurationMillis <= nowMillis - closeAfterMillis
-                if (closed) result += DriveGroup(stream, current.toList())
-                current = mutableListOf()
+            // Group by local calendar date (Day-wise merging)
+            val dateGroups = streamSegs.groupBy { seg ->
+                java.time.Instant.ofEpochMilli(seg.capturedAtEpoch)
+                    .atZone(java.time.ZoneId.systemDefault())
+                    .toLocalDate()
             }
 
-            for (seg in ordered) {
-                val prev = current.lastOrNull()
-                val breaks = prev != null &&
-                    (seg.capturedAtEpoch - prev.capturedAtEpoch > gapMillis || current.size >= maxPerGroup)
-                if (breaks) flush()
-                current.add(seg)
+            dateGroups.forEach { (date, dateSegs) ->
+                val ordered = dateSegs.sortedBy { it.capturedAtEpoch }
+                if (ordered.isEmpty()) return@forEach
+
+                val newest = ordered.maxOf { it.capturedAtEpoch }
+                val isPastDay = date.isBefore(nowLocalDate)
+                val hasQuietPeriod = newest + segmentDurationMillis <= nowMillis - closeAfterMillis
+
+                if (isPastDay || hasQuietPeriod) {
+                    // Chunk by maxPerGroup to stay within system file handle limits, but otherwise
+                    // merge all clips of the same day together even if hours apart.
+                    ordered.chunked(maxPerGroup).forEach { chunk ->
+                        result += DriveGroup(stream, chunk)
+                    }
+                }
             }
-            flush()
         }
         return result
     }

@@ -1,7 +1,7 @@
 package com.ddpai.uploader.merge
 
 object MergeNaming {
-    private val NAME_RE = Regex("""(\d{8})(\d{6})_(0060|F|R)\.mp4""", RegexOption.IGNORE_CASE)
+    private val NAME_RE = Regex("""(\d{8})(\d{6})_?([a-zA-Z0-9_-]*)\.mp4""", RegexOption.IGNORE_CASE)
 
     /** DRIVE_<date>_<time>_<stream>.mp4, with _p<N> for parts beyond the first. */
     fun outputName(head: DriveGrouper.Segment, part: Int): String {

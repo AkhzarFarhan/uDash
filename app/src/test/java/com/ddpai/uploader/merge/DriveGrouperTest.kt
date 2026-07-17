@@ -29,15 +29,26 @@ class DriveGrouperTest {
         assertEquals(listOf("a", "b", "c"), groups[0].segments.map { it.fileName })
     }
 
-    @Test fun largeGapSplitsGroups() {
+    @Test fun largeGapDoesNotSplitGroupsDayWise() {
         val segs = listOf(
             seg("a", 0L), seg("b", minute),
-            seg("c", 10 * minute), seg("d", 11 * minute) // 9-min gap > 120s
+            seg("c", 10 * minute), seg("d", 11 * minute)
+        )
+        val groups = DriveGrouper.buildClosedGroups(segs, farFuture)
+        assertEquals(1, groups.size)
+        assertEquals(listOf("a", "b", "c", "d"), groups[0].segments.map { it.fileName })
+    }
+
+    @Test fun differentDaysSplitsGroups() {
+        val dayMillis = 24 * 60 * 60 * 1000L
+        val segs = listOf(
+            seg("a", 0L),
+            seg("b", dayMillis) // next calendar day
         )
         val groups = DriveGrouper.buildClosedGroups(segs, farFuture)
         assertEquals(2, groups.size)
-        assertEquals(listOf("a", "b"), groups[0].segments.map { it.fileName })
-        assertEquals(listOf("c", "d"), groups[1].segments.map { it.fileName })
+        assertEquals(listOf("a"), groups[0].segments.map { it.fileName })
+        assertEquals(listOf("b"), groups[1].segments.map { it.fileName })
     }
 
     @Test fun differentStreamsNeverMerge() {

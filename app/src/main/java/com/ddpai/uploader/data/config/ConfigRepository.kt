@@ -31,6 +31,7 @@ class ConfigRepository(context: Context) {
             .putBoolean("deleteAfterUpload", config.deleteAfterUpload)
             .putBoolean("wifiAutoStart", config.wifiAutoStart)
             .putString("gateway", config.dashcamGateway)
+            .putString("homeWifiGateway", config.homeWifiGateway)
             .putInt("maxRetries", config.maxRetries)
             .putString("syncMode", config.syncMode)
             .apply()
@@ -44,6 +45,7 @@ class ConfigRepository(context: Context) {
         deleteAfterUpload = securePrefs.getBoolean("deleteAfterUpload", true),
         wifiAutoStart = securePrefs.getBoolean("wifiAutoStart", true),
         dashcamGateway = securePrefs.getString("gateway", "193.168.0.1") ?: "193.168.0.1",
+        homeWifiGateway = securePrefs.getString("homeWifiGateway", "") ?: "",
         maxRetries = securePrefs.getInt("maxRetries", 5),
         syncMode = securePrefs.getString("syncMode", "PERSISTENT") ?: "PERSISTENT",
     )
