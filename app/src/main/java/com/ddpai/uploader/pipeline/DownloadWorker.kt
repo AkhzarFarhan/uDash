@@ -35,7 +35,7 @@ class DownloadWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
             sl.currentDashcamNetwork = network
             sl.log.x("DownloadWorker", "Resolved network: $network")
 
-            val client = DashcamClient(network, gateway, sl.log)
+            val client = DashcamClient(network, gateway, sl.log, sl.config.config.value.dashcamType)
             val verifier = IntegrityVerifier(sl.log)
 
             sl.log.x("DownloadWorker", "Fetching remote files from dashcam")

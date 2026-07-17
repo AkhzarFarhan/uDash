@@ -32,6 +32,7 @@ class ConfigRepository(context: Context) {
             .putBoolean("wifiAutoStart", config.wifiAutoStart)
             .putString("gateway", config.dashcamGateway)
             .putString("homeWifiGateway", config.homeWifiGateway)
+            .putString("dashcamType", config.dashcamType)
             .putInt("maxRetries", config.maxRetries)
             .putString("syncMode", config.syncMode)
             .apply()
@@ -46,6 +47,7 @@ class ConfigRepository(context: Context) {
         wifiAutoStart = securePrefs.getBoolean("wifiAutoStart", true),
         dashcamGateway = securePrefs.getString("gateway", "193.168.0.1") ?: "193.168.0.1",
         homeWifiGateway = securePrefs.getString("homeWifiGateway", "") ?: "",
+        dashcamType = securePrefs.getString("dashcamType", "AUTODETECT") ?: "AUTODETECT",
         maxRetries = securePrefs.getInt("maxRetries", 5),
         syncMode = securePrefs.getString("syncMode", "PERSISTENT") ?: "PERSISTENT",
     )

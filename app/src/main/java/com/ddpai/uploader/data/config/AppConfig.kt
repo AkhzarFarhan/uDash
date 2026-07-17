@@ -9,6 +9,7 @@ data class AppConfig(
     val wifiAutoStart: Boolean = true,
     val dashcamGateway: String = "193.168.0.1",
     val homeWifiGateway: String = "",
+    val dashcamType: String = "AUTODETECT", // AUTODETECT | DDPAI | NOVATEK_GENERIC
     val maxRetries: Int = 5,
     val syncMode: String = "PERSISTENT",   // PERSISTENT | BATTERY_SAVER
 )

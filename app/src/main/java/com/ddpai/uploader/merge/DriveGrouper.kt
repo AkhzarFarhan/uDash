@@ -5,13 +5,12 @@ object DriveGrouper {
     data class Segment(val fileName: String, val capturedAtEpoch: Long, val streamKey: String)
     data class DriveGroup(val streamKey: String, val segments: List<Segment>)
 
-    private val NAME_RE = Regex("""\d{8}\d{6}_?([a-zA-Z0-9_-]*)\.mp4""", RegexOption.IGNORE_CASE)
 
-    fun streamKeyOf(fileName: String): String? =
-        NAME_RE.find(fileName)?.let { match ->
-            val key = match.groupValues[1].uppercase()
-            if (key.isEmpty()) "MAIN" else key
-        }
+    fun streamKeyOf(fileName: String): String? {
+        if (!fileName.endsWith(".mp4", ignoreCase = true)) return null
+        if (com.ddpai.uploader.dashcam.DashcamParserHelper.parseCapturedAt(fileName) == 0L) return null
+        return com.ddpai.uploader.dashcam.DashcamParserHelper.extractStreamKey(fileName)
+    }
 
     fun buildClosedGroups(
         segments: List<Segment>,

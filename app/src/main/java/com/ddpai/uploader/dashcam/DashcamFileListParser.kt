@@ -1,12 +1,9 @@
 package com.ddpai.uploader.dashcam
 
 import com.ddpai.uploader.data.model.DashcamFile
-import java.text.SimpleDateFormat
-import java.util.Locale
-import java.util.TimeZone
 
 object DashcamFileListParser {
-    private val NAME_RE = Regex("""(\d{8})(\d{6})_?([a-zA-Z0-9_-]*)\.mp4""", RegexOption.IGNORE_CASE)
+    private val MP4_FILENAME_RE = Regex("""[a-zA-Z0-9_-]+\.mp4""", RegexOption.IGNORE_CASE)
 
     fun parse(body: String): List<DashcamFile> {
         val trimmed = body.trimStart()
@@ -14,22 +11,31 @@ object DashcamFileListParser {
         else parseHtml(body)
     }
 
-    private fun parseHtml(html: String): List<DashcamFile> =
-        NAME_RE.findAll(html).map { m ->
-            DashcamFile(m.value, 0L, epochFrom(m.groupValues[1], m.groupValues[2]))
+    private fun parseHtml(html: String): List<DashcamFile> {
+        val matches = MP4_FILENAME_RE.findAll(html)
+        return matches.map { m ->
+            val fileName = m.value
+            val capturedAt = DashcamParserHelper.parseCapturedAt(fileName)
+            val streamKey = DashcamParserHelper.extractStreamKey(fileName)
+            DashcamFile(
+                fileName = fileName,
+                sizeBytes = -1L,
+                capturedAtEpoch = if (capturedAt > 0) capturedAt else System.currentTimeMillis()
+            )
         }.distinctBy { it.fileName }.toList()
-
-    private fun parseJson(json: String): List<DashcamFile> {
-        val files = NAME_RE.findAll(json).map { it.value }.distinct().toList()
-        return files.map { name ->
-            val m = NAME_RE.find(name)!!
-            DashcamFile(name, 0L, epochFrom(m.groupValues[1], m.groupValues[2]))
-        }
     }
 
-    private fun epochFrom(date8: String, time6: String): Long = try {
-        val fmt = SimpleDateFormat("yyyyMMddHHmmss", Locale.US)
-        fmt.timeZone = TimeZone.getDefault()
-        fmt.parse(date8 + time6)?.time ?: 0L
-    } catch (e: Exception) { 0L }
+    private fun parseJson(json: String): List<DashcamFile> {
+        val matches = MP4_FILENAME_RE.findAll(json)
+        return matches.map { m ->
+            val fileName = m.value
+            val capturedAt = DashcamParserHelper.parseCapturedAt(fileName)
+            val streamKey = DashcamParserHelper.extractStreamKey(fileName)
+            DashcamFile(
+                fileName = fileName,
+                sizeBytes = -1L,
+                capturedAtEpoch = if (capturedAt > 0) capturedAt else System.currentTimeMillis()
+            )
+        }.distinctBy { it.fileName }.toList()
+    }
 }

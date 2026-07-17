@@ -74,7 +74,7 @@ class ConfigViewModel(application: Application) : AndroidViewModel(application) 
                 return@launch
             }
             val gateway = config.value.dashcamGateway
-            val dashcamClient = com.ddpai.uploader.dashcam.DashcamClient(network, gateway, logger)
+            val dashcamClient = com.ddpai.uploader.dashcam.DashcamClient(network, gateway, logger, config.value.dashcamType)
             withContext(Dispatchers.IO) {
                 try {
                     val files = dashcamClient.listFiles()

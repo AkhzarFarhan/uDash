@@ -33,6 +33,7 @@ fun ConfigScreen(vm: ConfigViewModel = viewModel()) {
     var clientSecret by remember { mutableStateOf("") }
     var gateway by remember { mutableStateOf("") }
     var homeWifiGateway by remember { mutableStateOf("") }
+    var dashcamType by remember { mutableStateOf("AUTODETECT") }
     var privacy by remember { mutableStateOf("private") }
     var deleteAfterUpload by remember { mutableStateOf(true) }
     var wifiAutoStart by remember { mutableStateOf(true) }
@@ -41,12 +42,14 @@ fun ConfigScreen(vm: ConfigViewModel = viewModel()) {
     var clientIdVisible by remember { mutableStateOf(false) }
     var clientSecretVisible by remember { mutableStateOf(false) }
     var privacyExpanded by remember { mutableStateOf(false) }
+    var dashcamTypeExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(configState) {
         clientId = configState.youtubeClientId
         clientSecret = configState.youtubeClientSecret
         gateway = configState.dashcamGateway
         homeWifiGateway = configState.homeWifiGateway
+        dashcamType = configState.dashcamType
         privacy = configState.uploadPrivacy
         deleteAfterUpload = configState.deleteAfterUpload
         wifiAutoStart = configState.wifiAutoStart
@@ -188,6 +191,59 @@ fun ConfigScreen(vm: ConfigViewModel = viewModel()) {
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    ExposedDropdownMenuBox(
+                        expanded = dashcamTypeExpanded,
+                        onExpandedChange = { dashcamTypeExpanded = !dashcamTypeExpanded }
+                    ) {
+                        OutlinedTextField(
+                            value = when (dashcamType) {
+                                "AUTODETECT" -> "Autodetect Protocol"
+                                "DDPAI" -> "DDPAI Hardware"
+                                "NOVATEK_GENERIC" -> "Generic Web / Novatek (Viofo, Rexing)"
+                                else -> dashcamType
+                            },
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Dashcam Protocol Type") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = dashcamTypeExpanded) },
+                            modifier = Modifier
+                                .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                                .fillMaxWidth()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = dashcamTypeExpanded,
+                            onDismissRequest = { dashcamTypeExpanded = false }
+                        ) {
+                            listOf("AUTODETECT", "DDPAI", "NOVATEK_GENERIC").forEach { type ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            when (type) {
+                                                "AUTODETECT" -> "Autodetect Protocol"
+                                                "DDPAI" -> "DDPAI Hardware"
+                                                "NOVATEK_GENERIC" -> "Generic Web / Novatek (Viofo, Rexing)"
+                                                else -> type
+                                            }
+                                        )
+                                    },
+                                    onClick = {
+                                        dashcamType = type
+                                        dashcamTypeExpanded = false
+                                        if (gateway == "193.168.0.1" || gateway == "192.168.1.254" || gateway.isBlank()) {
+                                            gateway = when (type) {
+                                                "DDPAI" -> "193.168.0.1"
+                                                "NOVATEK_GENERIC" -> "192.168.1.254"
+                                                else -> "193.168.0.1"
+                                            }
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
                 OutlinedTextField(
                     value = homeWifiGateway,
                     onValueChange = { homeWifiGateway = it },
@@ -275,6 +331,7 @@ fun ConfigScreen(vm: ConfigViewModel = viewModel()) {
                             uploadPrivacy = privacy,
                             dashcamGateway = gateway,
                             homeWifiGateway = homeWifiGateway,
+                            dashcamType = dashcamType,
                             deleteAfterUpload = deleteAfterUpload,
                             wifiAutoStart = wifiAutoStart,
                             maxRetries = maxRetries,

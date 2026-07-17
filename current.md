@@ -1,6 +1,6 @@
 # Project Current Status & Architecture Specification — uDash
 
-uDash is a fully automated background sync-and-upload companion application for Android designed specifically for **DDPAI dashcams**. It runs silently in the background, automatically detects your dashcam's Wi-Fi access point, downloads recordings, merges them into cohesive drive sessions, and uploads them to a private YouTube playlist.
+uDash is a fully automated background sync-and-upload companion application for Android designed to interface with arbitrary dashcams (supporting DDPAI, Viofo, Rexing, Garmin, and most generic web-index models). It runs silently in the background, automatically detects your dashcam's Wi-Fi access point, downloads recordings, merges them day-wise into cohesive drive sessions, and uploads them to a private YouTube playlist.
 
 ---
 
@@ -18,10 +18,15 @@ The application relies on several advanced design choices to ensure reliability 
    To prevent uploading corrupted files or HTML gateway error pages, uDash runs a two-step validation:
    - **MP4 Atom Scanner:** A lightweight local parser ([Mp4AtomScanner](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/integrity/Mp4AtomScanner.kt)) checking for `ftyp`, `mdat`, and `moov` atom headers.
    - **FFprobe Verification:** (Optional/Soft fallback) Uses a lightweight `FFprobeKit` command execution to check stream index readability.
-5. **Lossless Video Merging:**
-   DDPAI dashcams record videos in short 1-minute segments. Uploading dozens of individual files results in a fragmented YouTube experience. uDash clusters contiguous clips using a temporal proximity algorithm ([DriveGrouper](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/merge/DriveGrouper.kt)), then losslessly merges them using Android's native `MediaExtractor` and `MediaMuxer` ([Mp4Merger](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/merge/Mp4Merger.kt)), avoiding slow re-encoding.
+5. **Lossless Video Merging & Day-Wise Grouping:**
+   Dashcams record videos in short 1-minute segments. Uploading dozens of individual files results in a fragmented YouTube experience. uDash clusters segments **day-wise** using a calendar-date proximity algorithm ([DriveGrouper](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/merge/DriveGrouper.kt)), then losslessly merges them using Android's native `MediaExtractor` and `MediaMuxer` ([Mp4Merger](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/merge/Mp4Merger.kt)), avoiding slow re-encoding.
 6. **Thread-Safe Local Logger with EXTREME support:**
    The application implements a custom logging database ([LogRepository](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/data/repo/LogRepository.kt)) that supports the `EXTREME` logging level for trace diagnostics. Logging operations run on a background thread pool, caching DB writes and pruning logs to a maximum limit periodically to prevent performance degradation.
+7. **Generic Protocol Abstraction:**
+   Connectivity with different dashcam hardware is completely decoupled using the [DashcamProtocol](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/dashcam/DashcamProtocol.kt) interface:
+   - **DdpaiProtocol:** Supports session token handshake and query sequence.
+   - **NovatekGenericProtocol:** Performs web index directory crawling over standard paths (e.g. `/`, `/DCIM/`, `/sd/`) using standard directory index page crawlers.
+   - **Autodetect Policy:** Probes the target camera and dynamically falls back across protocols until connection is successfully established.
 
 ---
 
@@ -31,12 +36,16 @@ The application relies on several advanced design choices to ensure reliability 
 - **[App.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/App.kt):** Initializes Notification Channels, starts `SyncController` network monitoring, and registers a global uncaught exception handler that persists crashes to the local database before the app exits.
 
 ### 2. Dashcam Network Layer (`com.ddpai.uploader.dashcam`)
-- **[DashcamClient.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/dashcam/DashcamClient.kt):** Connects to the bound network interface, executes directory listing endpoint discovery, and runs range-based HTTP download requests. Supports HTTP range-resumes and defends against non-supportive HTTP 200 server fallbacks.
-- **[DashcamFileListParser.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/dashcam/DashcamFileListParser.kt):** Standardizes parsing of DDPAI's directory structure (either custom JSON models or raw Apache-like gateway HTML file indexes) and extracts capturing timestamps using date-regex parsing.
+- **[DashcamProtocol.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/dashcam/DashcamProtocol.kt):** Standard interface for device handshake, remote directory listing, and request compilation.
+- **[DdpaiProtocol.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/dashcam/DdpaiProtocol.kt):** Custom protocol implementation for DDPAI hardware using session tokens and cookie headers.
+- **[NovatekGenericProtocol.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/dashcam/NovatekGenericProtocol.kt):** Generic protocol implementation for Viofo, Rexing, and generic Novatek-based models.
+- **[DashcamParserHelper.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/dashcam/DashcamParserHelper.kt):** Utility methods to extract stream keys (`F`, `R`, `B`) and capture epochs generically from diverse dashcam naming formats.
+- **[DashcamClient.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/dashcam/DashcamClient.kt):** Connects to the bound network interface, resolves the dynamic protocol to use (Autodetect, DDPAI, or Novatek), and runs range-based HTTP download requests.
+- **[DashcamFileListParser.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/dashcam/DashcamFileListParser.kt):** Standardizes parsing of index directory responses (JSON models or raw directory HTML) to instantiate lists of remote files.
 - **[ListingFilter.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/dashcam/ListingFilter.kt):** Evaluates discovered files and ignores those outside configured rules (e.g. ignores files too old or not fitting filename pattern).
 
 ### 3. Data & Config Layer (`com.ddpai.uploader.data`)
-- **[AppConfig.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/data/config/AppConfig.kt):** Holds client IDs, secrets, max retry attempts, upload settings, and the default Gateway IP (`193.168.0.1`).
+- **[AppConfig.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/data/config/AppConfig.kt):** Holds client IDs, secrets, max retry attempts, upload settings, the default Gateway IP (`193.168.0.1`), configured Home Wi-Fi Gateway IP, and the active `dashcamType` protocol selector.
 - **[ConfigRepository.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/data/config/ConfigRepository.kt):** Persists configuration fields and AppAuth state variables using Android Jetpack's **EncryptedSharedPreferences** to encrypt credentials at rest.
 - **[AppDatabase.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/data/db/AppDatabase.kt):** Defines Room database configurations with destructively falling-back migrations.
 - **[VideoFileDao.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/data/db/VideoFileDao.kt):** SQL query mappings to select downloads, uploads, check statuses, and update metadata.
@@ -54,13 +63,13 @@ The application relies on several advanced design choices to ensure reliability 
 - **[IntegrityVerifier.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/integrity/IntegrityVerifier.kt):** Orchestrates validation checks and calls FFprobe duration checks if libraries compile successfully.
 
 ### 6. Video Merger Layer (`com.ddpai.uploader.merge`)
-- **[DriveGrouper.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/merge/DriveGrouper.kt):** Pure functional algorithm grouping adjacent files by comparing epoch offsets, sorting streams, and building group descriptors.
+- **[DriveGrouper.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/merge/DriveGrouper.kt):** Pure functional algorithm grouping adjacent files calendar-day-wise, sorting streams, and building group descriptors.
 - **[MergeNaming.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/merge/MergeNaming.kt):** Assigns filenames to merged drives using timestamps (e.g. `DRIVE_20260713_172819_F.mp4`).
 - **[Mp4Merger.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/merge/Mp4Merger.kt):** Implements format validation and concatenates multiple MP4 inputs by appending samples directly via raw buffers, shifting presentation timestamps offset.
 
 ### 7. Network Monitor (`com.ddpai.uploader.network`)
 - **[BoundHttpClientFactory.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/network/BoundHttpClientFactory.kt):** Builds specialized OkHttp clients tied to target networks or configures standard timeouts.
-- **[NetworkMonitor.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/network/NetworkMonitor.kt):** Connects to `ConnectivityManager` callbacks to check for Wi-Fi SSID, gateway transitions, and determines whether active networks fit configurations.
+- **[NetworkMonitor.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/network/NetworkMonitor.kt):** Connects to `ConnectivityManager` callbacks to check for Wi-Fi SSID, gateway transitions, and determines whether active networks fit configurations. Exposes Home Wi-Fi Gateway check to verify home networks explicitly.
 - **[DashcamNetworkResolver.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/network/DashcamNetworkResolver.kt):** Helper to classify active link gateways without active callbacks.
 
 ### 8. WorkManager Pipeline (`com.ddpai.uploader.pipeline`)
@@ -78,10 +87,10 @@ The application relies on several advanced design choices to ensure reliability 
 
 ### 10. UI & Composable Screen Layouts (`com.ddpai.uploader.ui`)
 - **[DashboardScreen.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/ui/dashboard/DashboardScreen.kt):** Central control panel showing upload speeds, queued items, and a scrollable debug log tail.
-- **[FileListScreen.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/ui/files/FileListScreen.kt):** Displays SQLite files with status indicators (Discovered, Downloading, Merged, Uploading, etc.) and player controls.
+- **[FileListScreen.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/ui/files/FileListScreen.kt):** Displays SQLite files with status indicators in an accordion day-wise collapsible list queue (collapsed by default).
 - **[LogConsoleScreen.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/ui/logs/LogConsoleScreen.kt):** Detailed log screen supporting level filtering (DEBUG, INFO, WARN, ERROR, EXTREME), search, and clipboard actions.
 - **[PlayerScreen.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/ui/player/PlayerScreen.kt):** Implements local video playback using ExoPlayer.
-- **[ConfigScreen.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/ui/config/ConfigScreen.kt):** Allows editing preferences (Gateway, YouTube IDs, storage configuration) and initiating authorization flows.
+- **[ConfigScreen.kt](file:///C:/GitHub/uDash/app/src/main/java/com/ddpai/uploader/ui/config/ConfigScreen.kt):** Allows editing preferences (Gateway, YouTube IDs, storage configuration, Home Wi-Fi Gateway IP, Dashcam Protocol dropdown) and initiating authorization flows.
 
 ---
 
@@ -89,6 +98,7 @@ The application relies on several advanced design choices to ensure reliability 
 
 uDash maintains unit test coverage for critical components:
 - **[DashcamFileListParserTest](file:///C:/GitHub/uDash/app/src/test/java/com/ddpai/uploader/dashcam/DashcamFileListParserTest.kt):** Validates parsing of JSON and HTML directory formats, verifying timezone offsets.
+- **[DashcamProtocolTest](file:///C:/GitHub/uDash/app/src/test/java/com/ddpai/uploader/dashcam/DashcamProtocolTest.kt):** Tests generic datetime extraction and stream key matching rules.
 - **[FileRepositoryTest](file:///C:/GitHub/uDash/app/src/test/java/com/ddpai/uploader/data/repo/FileRepositoryTest.kt):** Checks reconciliation logic and duplicate prevention.
 - **[Mp4AtomScannerTest](file:///C:/GitHub/uDash/app/src/test/java/com/ddpai/uploader/integrity/Mp4AtomScannerTest.kt):** Validates scanner capabilities using mock files (verifying `ftyp`, `mdat`, and `moov` structures).
 - **[DriveGrouperTest](file:///C:/GitHub/uDash/app/src/test/java/com/ddpai/uploader/merge/DriveGrouperTest.kt):** Tests drive aggregation rules, gap detection, and group closures.

@@ -14,117 +14,60 @@ import java.io.RandomAccessFile
 class DashcamClient(
     private val network: Network,
     private val gateway: String,
-    private val logger: LogRepository
+    private val logger: LogRepository,
+    private val dashcamType: String = "AUTODETECT"
 ) {
     private val client = BoundHttpClientFactory.forNetwork(network)
     private val base = "http://$gateway"
-    private var sessionId: String? = null
+    private var resolvedProtocol: DashcamProtocol? = null
 
-    private suspend fun ensureSession(): Boolean {
-        if (sessionId != null) return true
+    private suspend fun resolveProtocol(): DashcamProtocol {
+        resolvedProtocol?.let { return it }
 
-        val url = "$base/vcam/cmd.cgi?cmd=API_RequestSessionID"
-        logger.i("DashcamClient", "Requesting Session ID from: $url")
-        try {
-            val req = Request.Builder().url(url).post(okhttp3.internal.EMPTY_REQUEST).build()
-            client.newCall(req).execute().use { resp ->
-                logger.d("DashcamClient", "Session request HTTP response code: ${resp.code}")
-                
-                // 1. Try Set-Cookie header
-                val cookies = resp.headers("Set-Cookie")
-                for (cookie in cookies) {
-                    if (cookie.contains("SessionID=", ignoreCase = true)) {
-                        val parsedId = cookie.substringAfter("SessionID=").substringBefore(";")
-                        if (parsedId.isNotBlank()) {
-                            sessionId = parsedId
-                            logger.i("DashcamClient", "Acquired Session ID from cookie: $sessionId")
-                            return true
-                        }
-                    }
-                }
-
-                // 2. Try parsing body
-                val body = resp.body?.string().orEmpty()
-                logger.d("DashcamClient", "Session body: $body")
-
-                val sessionRegex = Regex(""""sessionid"\s*:\s*"([^"]+)"""", RegexOption.IGNORE_CASE)
-                val match = sessionRegex.find(body)
-                if (match != null) {
-                    sessionId = match.groupValues[1]
-                    logger.i("DashcamClient", "Acquired Session ID from JSON match: $sessionId")
-                    return true
-                }
-
-                val dataRegex = Regex(""""data"\s*:\s*"([^"]+)"""", RegexOption.IGNORE_CASE)
-                val dataMatch = dataRegex.find(body)
-                if (dataMatch != null && !dataMatch.groupValues[1].startsWith("0x")) {
-                    sessionId = dataMatch.groupValues[1]
-                    logger.i("DashcamClient", "Acquired Session ID from JSON data: $sessionId")
-                    return true
-                }
-            }
-        } catch (e: Exception) {
-            logger.w("DashcamClient", "Failed to acquire Session ID: ${e.javaClass.simpleName}: ${e.message}")
+        val type = if (dashcamType == "AUTODETECT") {
+            autodetectType()
+        } else {
+            dashcamType
         }
-        return sessionId != null
-    }
 
-    private fun Request.Builder.addSessionHeaders(): Request.Builder {
-        sessionId?.let { sid ->
-            header("sessionid", sid)
-            header("Cookie", "SessionID=$sid")
+        val proto = when (type) {
+            "DDPAI" -> DdpaiProtocol(logger)
+            "NOVATEK_GENERIC" -> NovatekGenericProtocol(logger)
+            else -> DdpaiProtocol(logger) // default fallback
         }
-        return this
-    }
-
-    suspend fun listFiles(): List<DashcamFile> = withContext(Dispatchers.IO) {
-        logger.i("DashcamClient", "listFiles() start: base=$base, network=$network")
         
-        // Ensure a session exists first if camera requires auth
-        ensureSession()
+        logger.i("DashcamClient", "Resolved active protocol: $type")
+        resolvedProtocol = proto
+        return proto
+    }
 
-        val endpoints = listOf(
-            "$base/vcam/cmd.cgi?cmd=APP_PlaybackListReq",
-            "$base/vcam/cmd.cgi?cmd=APP_PlaybackListReq_RearCam",
-            "$base/vcam/cmd.cgi?cmd=APP_EventListReq",
-            "$base/vcam/cmd.cgi?cmd=getFileList",
-            "$base/vcam/cmd.cgi?cmd=getfilelist",
-            "$base/vcam/cmd.cgi",
-            "$base/"
-        )
-        for (url in endpoints) {
-            try {
-                logger.d("DashcamClient", "Trying endpoint: $url")
-                val req = Request.Builder().url(url).get().addSessionHeaders().build()
-                client.newCall(req).execute().use { resp ->
-                    logger.d("DashcamClient", "Response from $url → HTTP ${resp.code}, content-type=${resp.header("Content-Type")}")
-                    if (!resp.isSuccessful) {
-                        logger.d("DashcamClient", "Non-success HTTP ${resp.code} from $url, skipping")
-                        return@use
-                    }
-                    val body = resp.body?.string().orEmpty()
-                    logger.d("DashcamClient", "Response body length=${body.length} from $url")
-                    if (body.length < 2000) {
-                        logger.d("DashcamClient", "Full response body:\n$body")
-                    } else {
-                        logger.d("DashcamClient", "Body preview (first 500 chars): ${body.take(500)}")
-                    }
-                    val files = DashcamFileListParser.parse(body)
-                    logger.d("DashcamClient", "Parsed ${files.size} files from $url")
-                    if (files.isNotEmpty()) {
-                        logger.i("DashcamClient", "Listing OK via $url → ${files.size} files")
-                        files.take(5).forEachIndexed { i, f ->
-                            logger.d("DashcamClient", "  [$i] ${f.fileName} size=${f.sizeBytes} epoch=${f.capturedAtEpoch}")
-                        }
-                        return@withContext files
-                    }
-                }
-            } catch (e: Exception) {
-                logger.w("DashcamClient", "Listing endpoint failed: $url → ${e.javaClass.simpleName}: ${e.message}")
-            }
+    private suspend fun autodetectType(): String {
+        logger.d("DashcamClient", "Autodetecting dashcam protocol via endpoint probing...")
+        
+        // 1. Try DDPAI Protocol handshake first
+        val ddpai = DdpaiProtocol(logger)
+        val ddpaiOk = ddpai.handshake(client, base)
+        if (ddpaiOk) {
+            logger.i("DashcamClient", "Autodetect: DDPAI protocol confirmed")
+            return "DDPAI"
         }
-        logger.w("DashcamClient", "No files found from any of ${endpoints.size} endpoints")
-        emptyList()
+
+        // 2. Try Novatek Generic Index directory crawling
+        val generic = NovatekGenericProtocol(logger)
+        val genericFiles = generic.listFiles(client, base)
+        if (genericFiles.isNotEmpty()) {
+            logger.i("DashcamClient", "Autodetect: Generic Web / Novatek protocol confirmed")
+            return "NOVATEK_GENERIC"
+        }
+
+        // 3. Unrecognized default fallback
+        logger.w("DashcamClient", "Autodetect failed to determine camera type. Defaulting to DDPAI")
+        return "DDPAI"
+    }
+
+    suspend fun listFiles(): List<DashcamFile> {
+        val proto = resolveProtocol()
+        return proto.listFiles(client, base)
     }
 
     suspend fun download(
@@ -133,18 +76,16 @@ class DashcamClient(
         existingBytes: Long,
         onProgress: (downloaded: Long, total: Long) -> Unit
     ): Long = withContext(Dispatchers.IO) {
-        val url = "$base/$fileName"
-        logger.d("DashcamClient", "download() start: $url, resume@$existingBytes → ${target.absolutePath}")
-        val reqBuilder = Request.Builder().url(url).get().addSessionHeaders()
-        if (existingBytes > 0) reqBuilder.header("Range", "bytes=$existingBytes-")
-        val request = reqBuilder.build()
+        val proto = resolveProtocol()
+        val rangeHeader = if (existingBytes > 0) "bytes=$existingBytes-" else null
+        val request = proto.buildDownloadRequest(base, fileName, rangeHeader)
 
         client.newCall(request).execute().use { resp ->
             logger.d("DashcamClient", "download response: HTTP ${resp.code}, content-length=${resp.header("Content-Length")}")
             if (!resp.isSuccessful && resp.code != 206) {
-                throw IOException("HTTP ${resp.code} for $url")
+                throw IOException("HTTP ${resp.code} for $fileName")
             }
-            val body = resp.body ?: throw IOException("Empty body for $url")
+            val body = resp.body ?: throw IOException("Empty body for $fileName")
             val totalFromHeader = body.contentLength().let {
                 if (it > 0) it + existingBytes else -1L
             }
