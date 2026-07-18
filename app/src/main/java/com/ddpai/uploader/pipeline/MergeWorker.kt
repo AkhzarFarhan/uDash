@@ -29,6 +29,18 @@ class MergeWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
                 sl.log.i("MergeWorker", "No segments to merge")
                 return Result.success()
             }
+
+            // Check for incomplete downloads of the same calendar days
+            val incomplete = sl.files.getIncompleteSegments()
+            val zoneId = java.time.ZoneId.systemDefault()
+            val incompleteByDateAndStream = incomplete.groupBy { e ->
+                val date = java.time.Instant.ofEpochMilli(e.capturedAtEpoch)
+                    .atZone(zoneId)
+                    .toLocalDate()
+                val stream = DriveGrouper.streamKeyOf(e.fileName) ?: "MAIN"
+                Pair(date, stream)
+            }
+
             val grouperSegs = segments.mapNotNull { e ->
                 DriveGrouper.streamKeyOf(e.fileName)?.let { key ->
                     DriveGrouper.Segment(e.fileName, e.capturedAtEpoch, key)
@@ -41,6 +53,19 @@ class MergeWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
             val merger = Mp4Merger()
 
             for (group in groups) {
+                if (group.segments.isEmpty()) continue
+                val groupDate = java.time.Instant.ofEpochMilli(group.segments.first().capturedAtEpoch)
+                    .atZone(zoneId)
+                    .toLocalDate()
+
+                if (incompleteByDateAndStream.containsKey(Pair(groupDate, group.streamKey))) {
+                    sl.log.i(
+                        "MergeWorker",
+                        "Skipping merge for $groupDate stream ${group.streamKey} because there are still incomplete downloads for this day"
+                    )
+                    continue
+                }
+
                 sl.log.x("MergeWorker", "Processing group for streamKey ${group.streamKey} with ${group.segments.size} segments")
                 processGroup(group, byName, merger)
             }

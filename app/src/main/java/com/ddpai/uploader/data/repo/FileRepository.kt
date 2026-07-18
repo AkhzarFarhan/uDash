@@ -44,6 +44,13 @@ class FileRepository(
         return res
     }
 
+    suspend fun getIncompleteSegments(): List<VideoFileEntity> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        logger.x("FileRepo", "getIncompleteSegments() called")
+        val res = dao.getByStatuses(listOf(FileStatus.DISCOVERED.name, FileStatus.DOWNLOADING.name, FileStatus.PENDING.name))
+        logger.x("FileRepo", "getIncompleteSegments() returned ${res.size} items")
+        return@withContext res
+    }
+
     suspend fun nextToUpload(): VideoFileEntity? {
         logger.x("FileRepo", "nextToUpload() called")
         val res = dao.nextToUpload()

@@ -66,4 +66,40 @@ class FileRepositoryTest {
         assertEquals(0, addedSecond)
         assertEquals(2, insertedFiles.size)
     }
+
+    @Test
+    fun testGetIncompleteSegments() = runBlocking {
+        val mockDao = object : VideoFileDao {
+            override suspend fun insertIgnore(file: VideoFileEntity): Long = -1L
+            override suspend fun update(file: VideoFileEntity) {}
+            override suspend fun getByName(name: String): VideoFileEntity? = null
+            override suspend fun getAllKnownFileNames(): List<String> = emptyList()
+            override suspend fun getByStatuses(statuses: List<String>): List<VideoFileEntity> {
+                return listOf(
+                    VideoFileEntity("f1.mp4", "url", null, "DISCOVERED", 100, 1000),
+                    VideoFileEntity("f2.mp4", "url", null, "PENDING", 100, 1000),
+                    VideoFileEntity("f3.mp4", "url", null, "DOWNLOADING", 100, 1000)
+                ).filter { statuses.contains(it.status) }
+            }
+            override suspend fun nextToUpload(): VideoFileEntity? = null
+            override suspend fun downloadedSegments(): List<VideoFileEntity> = emptyList()
+            override suspend fun relabelAsMerged(name: String, ts: Long) {}
+            override suspend fun insertMerged(entity: VideoFileEntity) {}
+            override suspend fun markSegmentMerged(name: String, output: String, ts: Long) {}
+            override suspend fun pendingDownloads(): List<VideoFileEntity> = emptyList()
+            override fun observeAll(): Flow<List<VideoFileEntity>> = emptyFlow()
+            override fun observeCountByStatus(status: String): Flow<Int> = emptyFlow()
+            override suspend fun setStatus(name: String, status: String, ts: Long) {}
+            override suspend fun recordRetry(name: String, retryStatus: String, error: String, ts: Long) {}
+            override suspend fun setDownloadProgress(name: String, downloaded: Long, size: Long, ts: Long) {}
+            override suspend fun reclaimOrphans(fromStatus: String, toStatus: String, ts: Long): Int = 0
+        }
+
+        val repository = FileRepository(mockDao, mockLog, File("."))
+        val incomplete = repository.getIncompleteSegments()
+        assertEquals(3, incomplete.size)
+        org.junit.Assert.assertTrue(incomplete.any { it.fileName == "f1.mp4" })
+        org.junit.Assert.assertTrue(incomplete.any { it.fileName == "f2.mp4" })
+        org.junit.Assert.assertTrue(incomplete.any { it.fileName == "f3.mp4" })
+    }
 }
